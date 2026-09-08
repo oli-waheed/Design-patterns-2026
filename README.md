@@ -81,8 +81,8 @@ Check the database:
 
 ```powershell
 docker compose ps
+```
 
-````markdown
 ### 4. Start the backend
 
 Open a terminal:
