@@ -163,6 +163,10 @@ Phase 1 establishes the project foundation:
 
 No design pattern is implemented in Phase 1.
 
+## Phase Roadmap
+
+See [docs/phases/README.md](docs/phases/README.md) for the complete phase order.
+
 ## API Health
 
 The backend provides:
