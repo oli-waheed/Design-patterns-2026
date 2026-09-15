@@ -1,3 +1,5 @@
+import SensorList from '../features/sensors/SensorList'
+
 export default function DashboardPage() {
   const sections = [
     {
@@ -36,6 +38,7 @@ export default function DashboardPage() {
     <section>
       <div className="mb-8">
         <h2 className="text-3xl font-bold">Dashboard</h2>
+
         <p className="mt-2 text-gray-600">
           Smart greenhouse monitoring and control.
         </p>
@@ -48,15 +51,21 @@ export default function DashboardPage() {
             id={section.id}
             className="rounded-xl border bg-white p-6 shadow-sm"
           >
-            <h3 className="text-lg font-semibold">{section.title}</h3>
+            <h3 className="text-lg font-semibold">
+              {section.title}
+            </h3>
 
             <p className="mt-2 text-sm text-gray-600">
               {section.description}
             </p>
 
-            <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
-              Placeholder
-            </div>
+            {section.id === 'sensors' ? (
+              <SensorList />
+            ) : (
+              <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+                Placeholder
+              </div>
+            )}
           </article>
         ))}
       </div>

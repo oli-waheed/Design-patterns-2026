@@ -1,30 +1,36 @@
-from pathlib import Path
-import sys
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config
+from sqlalchemy import pool
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
-
-BASE_DIR = Path(__file__).resolve().parents[1]
-SRC_DIR = BASE_DIR / "src"
-
-sys.path.insert(0, str(SRC_DIR))
-
+from infrastructure.persistence.base import Base
+from infrastructure.persistence import models
 from infrastructure.settings import settings
 
 
+# Alembic Config object
 config = context.config
 
-config.set_main_option(
-    "sqlalchemy.url",
-    settings.database_url.replace("%", "%%"),
-)
 
-target_metadata = None
+# Configure Python logging
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+
+# Make sure Alembic uses the application's database URL
+config.set_main_option("sqlalchemy.url", settings.database_url)
+
+
+# Metadata used by Alembic autogenerate
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    url = settings.database_url
+    """Run migrations in 'offline' mode."""
+
+    url = config.get_main_option("sqlalchemy.url")
 
     context.configure(
         url=url,
@@ -38,6 +44,8 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    """Run migrations in 'online' mode."""
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
