@@ -1,11 +1,25 @@
+import { useState } from 'react'
+
+import DeviceFamilySwitcher from '../features/devices/DeviceFamilySwitcher'
+import DeviceList from '../features/devices/DeviceList'
 import SensorList from '../features/sensors/SensorList'
 
+type DeviceFamily = 'simulation' | 'edge'
+
 export default function DashboardPage() {
+  const [deviceFamily, setDeviceFamily] =
+    useState<DeviceFamily>('simulation')
+
   const sections = [
     {
       id: 'sensors',
       title: 'Sensors',
       description: 'Monitor greenhouse sensor readings.',
+    },
+    {
+      id: 'devices',
+      title: 'Devices',
+      description: 'Manage simulation and edge devices.',
     },
     {
       id: 'configuration',
@@ -61,6 +75,16 @@ export default function DashboardPage() {
 
             {section.id === 'sensors' ? (
               <SensorList />
+            ) : section.id === 'devices' ? (
+              <div className="mt-6 space-y-4">
+                <DeviceFamilySwitcher
+                  family={deviceFamily}
+                  onFamilyChange={setDeviceFamily}
+                  devices={[]}
+                />
+
+                <DeviceList family={deviceFamily} />
+              </div>
             ) : (
               <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
                 Placeholder
