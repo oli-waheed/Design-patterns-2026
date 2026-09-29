@@ -1,9 +1,12 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from application.devices.dto import DeviceDto
 from application.devices.mapper import DeviceMapper
 from application.devices.service import DevicesService
+from application.locations.dto import DeviceAssignmentDto
 from infrastructure.db import get_db
 from infrastructure.persistence.device_repository import DeviceRepository
 
@@ -62,3 +65,31 @@ def provision_devices(
         DeviceMapper.to_dto(device)
         for device in devices
     ]
+
+
+@router.patch(
+    "/{device_id}/zone",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def assign_device_to_zone(
+    device_id: UUID,
+    request: DeviceAssignmentDto,
+    service: DevicesService = Depends(get_devices_service),
+) -> None:
+    try:
+        device_exists = service.assign_zone(
+            device_id=device_id,
+            zone_id=request.zone_id,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    if not device_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found.",
+        )

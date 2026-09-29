@@ -1,9 +1,11 @@
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from domain.devices.entity import Device
 from domain.sensors.entity import Sensor
-from infrastructure.persistence.models import DeviceRow
+from infrastructure.persistence.models import DeviceRow, ZoneRow
 
 
 class DeviceRepository:
@@ -64,7 +66,10 @@ class DeviceRepository:
 
         return self._row_to_device(row)
 
-    def save_devices(self, devices: list[Device]) -> list[Device]:
+    def save_devices(
+        self,
+        devices: list[Device],
+    ) -> list[Device]:
         rows = [
             DeviceRow(
                 device_type=device.device_type,
@@ -82,7 +87,10 @@ class DeviceRepository:
         for row in rows:
             self._db.refresh(row)
 
-        return [self._row_to_device(row) for row in rows]
+        return [
+            self._row_to_device(row)
+            for row in rows
+        ]
 
     def list_devices(
         self,
@@ -101,14 +109,93 @@ class DeviceRepository:
                 DeviceRow.role == role
             )
 
-        statement = statement.order_by(DeviceRow.created_at.desc())
+        statement = statement.order_by(
+            DeviceRow.created_at.desc()
+        )
 
         rows = self._db.scalars(statement).all()
 
-        return [self._row_to_device(row) for row in rows]
+        return [
+            self._row_to_device(row)
+            for row in rows
+        ]
+
+    def assign_zone(
+        self,
+        device_id: UUID,
+        zone_id: UUID | None,
+    ) -> bool:
+        device = self._db.get(
+            DeviceRow,
+            device_id,
+        )
+
+        if device is None:
+            return False
+
+        try:
+            if zone_id is None:
+                device.zone_id = None
+                device.location_id = None
+
+            else:
+                zone = self._db.get(
+                    ZoneRow,
+                    zone_id,
+                )
+
+                if zone is None:
+                    raise ValueError(
+                        "Zone not found."
+                    )
+
+                device.zone_id = zone.id
+                device.location_id = zone.location_id
+
+            self._db.commit()
+            self._db.refresh(device)
+
+            return True
+
+        except Exception:
+            self._db.rollback()
+            raise
+
+    def list_devices_in_zone(
+        self,
+        location_id: UUID,
+        zone_id: UUID,
+    ) -> list[Device]:
+        zone = self._db.get(
+            ZoneRow,
+            zone_id,
+        )
+
+        if zone is None:
+            raise ValueError("Zone not found.")
+
+        if zone.location_id != location_id:
+            raise ValueError(
+                "Zone does not belong to this location."
+            )
+
+        statement = (
+            select(DeviceRow)
+            .where(DeviceRow.zone_id == zone_id)
+            .order_by(DeviceRow.created_at.desc())
+        )
+
+        rows = self._db.scalars(statement).all()
+
+        return [
+            self._row_to_device(row)
+            for row in rows
+        ]
 
     @staticmethod
-    def _row_to_device(row: DeviceRow) -> Device:
+    def _row_to_device(
+        row: DeviceRow,
+    ) -> Device:
         return Device(
             id=row.id,
             device_type=row.device_type,
