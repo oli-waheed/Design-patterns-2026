@@ -13,6 +13,8 @@ class DeviceMapper:
             device_family=device.device_family,
             display_name=device.display_name,
             default_config=device.default_config,
+            zone_id=device.zone_id,
+            location_id=device.location_id,
         )
 
     @staticmethod
@@ -24,4 +26,6 @@ class DeviceMapper:
             device_family=dto.device_family,
             display_name=dto.display_name,
             default_config=dto.default_config,
+            zone_id=dto.zone_id,
+            location_id=dto.location_id,
         )

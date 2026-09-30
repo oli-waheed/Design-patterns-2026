@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import DeviceFamilySwitcher from '../features/devices/DeviceFamilySwitcher'
 import DeviceList from '../features/devices/DeviceList'
+import LocationManager from '../features/locations/LocationManager'
 import SensorList from '../features/sensors/SensorList'
 
 type DeviceFamily = 'simulation' | 'edge'
@@ -51,7 +52,9 @@ export default function DashboardPage() {
   return (
     <section>
       <div className="mb-8">
-        <h2 className="text-3xl font-bold">Dashboard</h2>
+        <h2 className="text-3xl font-bold">
+          Dashboard
+        </h2>
 
         <p className="mt-2 text-gray-600">
           Smart greenhouse monitoring and control.
@@ -83,7 +86,13 @@ export default function DashboardPage() {
                   devices={[]}
                 />
 
-                <DeviceList family={deviceFamily} />
+                <DeviceList
+                  family={deviceFamily}
+                />
+              </div>
+            ) : section.id === 'configuration' ? (
+              <div className="mt-6">
+                <LocationManager />
               </div>
             ) : (
               <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
