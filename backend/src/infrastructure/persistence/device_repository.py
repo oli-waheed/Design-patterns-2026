@@ -13,12 +13,18 @@ class DeviceRepository:
         self._db = db
 
     def save_sensor(self, sensor: Sensor) -> Sensor:
+        sampling_interval_seconds = int(
+            sensor.default_config.get("sampling_interval_seconds", 300)
+        )
+
         row = DeviceRow(
             device_type=sensor.device_type,
             role="sensor",
             device_family="simulation",
             display_name=sensor.display_name,
             default_config=sensor.default_config,
+            sampling_interval_seconds=sampling_interval_seconds,
+            tracking_enabled=True,
         )
 
         self._db.add(row)
@@ -58,6 +64,8 @@ class DeviceRepository:
             device_family=device.device_family,
             display_name=device.display_name,
             default_config=device.default_config,
+            sampling_interval_seconds=device.sampling_interval_seconds,
+            tracking_enabled=device.tracking_enabled,
         )
 
         self._db.add(row)
@@ -66,10 +74,7 @@ class DeviceRepository:
 
         return self._row_to_device(row)
 
-    def save_devices(
-        self,
-        devices: list[Device],
-    ) -> list[Device]:
+    def save_devices(self, devices: list[Device]) -> list[Device]:
         rows = [
             DeviceRow(
                 device_type=device.device_type,
@@ -77,6 +82,8 @@ class DeviceRepository:
                 device_family=device.device_family,
                 display_name=device.display_name,
                 default_config=device.default_config,
+                sampling_interval_seconds=device.sampling_interval_seconds,
+                tracking_enabled=device.tracking_enabled,
             )
             for device in devices
         ]
@@ -87,10 +94,7 @@ class DeviceRepository:
         for row in rows:
             self._db.refresh(row)
 
-        return [
-            self._row_to_device(row)
-            for row in rows
-        ]
+        return [self._row_to_device(row) for row in rows]
 
     def list_devices(
         self,
@@ -109,9 +113,7 @@ class DeviceRepository:
                 DeviceRow.role == role
             )
 
-        statement = statement.order_by(
-            DeviceRow.created_at.desc()
-        )
+        statement = statement.order_by(DeviceRow.created_at.desc())
 
         rows = self._db.scalars(statement).all()
 
@@ -125,10 +127,7 @@ class DeviceRepository:
         device_id: UUID,
         zone_id: UUID | None,
     ) -> bool:
-        device = self._db.get(
-            DeviceRow,
-            device_id,
-        )
+        device = self._db.get(DeviceRow, device_id)
 
         if device is None:
             return False
@@ -137,17 +136,11 @@ class DeviceRepository:
             if zone_id is None:
                 device.zone_id = None
                 device.location_id = None
-
             else:
-                zone = self._db.get(
-                    ZoneRow,
-                    zone_id,
-                )
+                zone = self._db.get(ZoneRow, zone_id)
 
                 if zone is None:
-                    raise ValueError(
-                        "Zone not found."
-                    )
+                    raise ValueError("Zone not found.")
 
                 device.zone_id = zone.id
                 device.location_id = zone.location_id
@@ -161,15 +154,31 @@ class DeviceRepository:
             self._db.rollback()
             raise
 
+    def update_sampling(
+        self,
+        device_id: UUID,
+        sampling_interval_seconds: int,
+        tracking_enabled: bool,
+    ) -> Device | None:
+        device = self._db.get(DeviceRow, device_id)
+
+        if device is None:
+            return None
+
+        device.sampling_interval_seconds = sampling_interval_seconds
+        device.tracking_enabled = tracking_enabled
+
+        self._db.commit()
+        self._db.refresh(device)
+
+        return self._row_to_device(device)
+
     def list_devices_in_zone(
         self,
         location_id: UUID,
         zone_id: UUID,
     ) -> list[Device]:
-        zone = self._db.get(
-            ZoneRow,
-            zone_id,
-        )
+        zone = self._db.get(ZoneRow, zone_id)
 
         if zone is None:
             raise ValueError("Zone not found.")
@@ -193,9 +202,7 @@ class DeviceRepository:
         ]
 
     @staticmethod
-    def _row_to_device(
-        row: DeviceRow,
-    ) -> Device:
+    def _row_to_device(row: DeviceRow) -> Device:
         return Device(
             id=row.id,
             device_type=row.device_type,
@@ -205,4 +212,6 @@ class DeviceRepository:
             default_config=row.default_config,
             zone_id=row.zone_id,
             location_id=row.location_id,
+            sampling_interval_seconds=row.sampling_interval_seconds,
+            tracking_enabled=row.tracking_enabled,
         )

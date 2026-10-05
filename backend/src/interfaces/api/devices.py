@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from application.devices.dto import DeviceDto
@@ -15,6 +16,19 @@ router = APIRouter(
     prefix="/api/devices",
     tags=["devices"],
 )
+
+
+class SamplingUpdateRequest(BaseModel):
+    sampling_interval_seconds: int = Field(
+        ge=5,
+    )
+    tracking_enabled: bool
+
+
+class SamplingResponse(BaseModel):
+    device_id: UUID
+    sampling_interval_seconds: int
+    tracking_enabled: bool
 
 
 def get_devices_service(
@@ -55,6 +69,7 @@ def provision_devices(
 ) -> list[DeviceDto]:
     try:
         devices = service.provision_family(family)
+
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -93,3 +108,31 @@ def assign_device_to_zone(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Device not found.",
         )
+
+
+@router.patch(
+    "/{device_id}/sampling",
+    response_model=SamplingResponse,
+)
+def update_sampling(
+    device_id: UUID,
+    request: SamplingUpdateRequest,
+    service: DevicesService = Depends(get_devices_service),
+) -> SamplingResponse:
+    device = service.update_sampling(
+        device_id=device_id,
+        sampling_interval_seconds=request.sampling_interval_seconds,
+        tracking_enabled=request.tracking_enabled,
+    )
+
+    if device is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found.",
+        )
+
+    return SamplingResponse(
+        device_id=device.id,
+        sampling_interval_seconds=device.sampling_interval_seconds,
+        tracking_enabled=device.tracking_enabled,
+    )

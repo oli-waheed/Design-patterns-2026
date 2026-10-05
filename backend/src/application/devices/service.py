@@ -42,6 +42,18 @@ class DevicesService:
             zone_id=zone_id,
         )
 
+    def update_sampling(
+        self,
+        device_id: UUID,
+        sampling_interval_seconds: int,
+        tracking_enabled: bool,
+    ) -> Device | None:
+        return self._repository.update_sampling(
+            device_id=device_id,
+            sampling_interval_seconds=sampling_interval_seconds,
+            tracking_enabled=tracking_enabled,
+        )
+
     def list_devices_in_zone(
         self,
         location_id: UUID,

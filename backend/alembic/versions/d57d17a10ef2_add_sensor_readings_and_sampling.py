@@ -1,0 +1,129 @@
+"""Add sensor readings and sampling
+
+Revision ID: d57d17a10ef2
+Revises: 089e40b8395c
+Create Date: 2026-10-05 04:13:09.419342
+
+"""
+
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision: str = "d57d17a10ef2"
+down_revision: Union[str, Sequence[str], None] = "089e40b8395c"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+
+    # Create sensor_readings table
+    op.create_table(
+        "sensor_readings",
+        sa.Column(
+            "id",
+            sa.UUID(),
+            server_default=sa.text("gen_random_uuid()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "device_id",
+            sa.UUID(),
+            nullable=False,
+        ),
+        sa.Column(
+            "value",
+            sa.Numeric(),
+            nullable=False,
+        ),
+        sa.Column(
+            "unit",
+            sa.String(length=32),
+            nullable=False,
+        ),
+        sa.Column(
+            "source",
+            sa.String(length=32),
+            nullable=False,
+        ),
+        sa.Column(
+            "recorded_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["device_id"],
+            ["devices.id"],
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+
+    # Index for latest readings per device
+    op.create_index(
+        "ix_sensor_readings_device_recorded_at",
+        "sensor_readings",
+        ["device_id", "recorded_at"],
+        unique=False,
+    )
+
+    # Add Phase 5 sampling settings to devices
+    op.add_column(
+        "devices",
+        sa.Column(
+            "sampling_interval_seconds",
+            sa.Integer(),
+            server_default=sa.text("300"),
+            nullable=False,
+        ),
+    )
+
+    op.add_column(
+        "devices",
+        sa.Column(
+            "tracking_enabled",
+            sa.Boolean(),
+            server_default=sa.text("true"),
+            nullable=False,
+        ),
+    )
+
+    # Backfill sampling interval from existing default_config JSON
+    # when it contains a numeric sampling_interval_seconds value.
+    op.execute(
+        """
+        UPDATE devices
+        SET sampling_interval_seconds =
+            (default_config->>'sampling_interval_seconds')::integer
+        WHERE jsonb_typeof(default_config->'sampling_interval_seconds') = 'number'
+        """
+    )
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+
+    op.drop_column(
+        "devices",
+        "tracking_enabled",
+    )
+
+    op.drop_column(
+        "devices",
+        "sampling_interval_seconds",
+    )
+
+    op.drop_index(
+        "ix_sensor_readings_device_recorded_at",
+        table_name="sensor_readings",
+    )
+
+    op.drop_table(
+        "sensor_readings",
+    )
