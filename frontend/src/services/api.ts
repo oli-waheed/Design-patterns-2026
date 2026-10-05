@@ -24,6 +24,19 @@ export type DeviceDto = {
   default_config: Record<string, unknown>
   zone_id?: string | null
   location_id?: string | null
+  sampling_interval_seconds: number
+  tracking_enabled: boolean
+}
+
+export type SamplingUpdateRequest = {
+  sampling_interval_seconds: number
+  tracking_enabled: boolean
+}
+
+export type SamplingResponse = {
+  device_id: string
+  sampling_interval_seconds: number
+  tracking_enabled: boolean
 }
 
 export type ZoneDto = {
@@ -156,6 +169,33 @@ export async function provisionDevices(
       await getErrorMessage(
         response,
         'Failed to provision devices',
+      ),
+    )
+  }
+
+  return response.json()
+}
+
+export async function updateDeviceSampling(
+  deviceId: string,
+  request: SamplingUpdateRequest,
+): Promise<SamplingResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/devices/${deviceId}/sampling`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(
+        response,
+        'Failed to update sampling settings',
       ),
     )
   }

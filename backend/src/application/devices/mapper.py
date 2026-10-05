@@ -15,6 +15,8 @@ class DeviceMapper:
             default_config=device.default_config,
             zone_id=device.zone_id,
             location_id=device.location_id,
+            sampling_interval_seconds=device.sampling_interval_seconds,
+            tracking_enabled=device.tracking_enabled,
         )
 
     @staticmethod
@@ -28,4 +30,6 @@ class DeviceMapper:
             default_config=dto.default_config,
             zone_id=dto.zone_id,
             location_id=dto.location_id,
+            sampling_interval_seconds=dto.sampling_interval_seconds,
+            tracking_enabled=dto.tracking_enabled,
         )
