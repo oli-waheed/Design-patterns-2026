@@ -1,3 +1,4 @@
+
 export type HealthResponse = {
   status: 'ok' | 'degraded'
   db: 'ok' | 'fail'
@@ -213,7 +214,12 @@ export async function getLocations(): Promise<
   )
 
   if (!response.ok) {
-    throw new Error('Failed to load locations')
+    throw new Error(
+      await getErrorMessage(
+        response,
+        'Failed to load locations',
+      ),
+    )
   }
 
   return response.json()
@@ -404,6 +410,82 @@ export async function getZoneDevices(
       await getErrorMessage(
         response,
         'Failed to load zone devices',
+      ),
+    )
+  }
+
+  return response.json()
+}
+
+/* ---------------- Automation Strategy (Phase 6) ---------------- */
+
+export type StrategyKey = 'conservative' | 'aggressive'
+
+export type StrategySelectionRequest = {
+  strategy_key: StrategyKey
+}
+
+export type ZoneRecommendationDto = {
+  zone_id: string
+  zone_name: string
+  moisture: number | null
+  low_threshold: number
+  high_threshold: number
+  action: string
+  reason: string
+  score?: number | null
+}
+
+export type AutomationEvaluationDto = {
+  location_id: string
+  strategy_key: StrategyKey
+  recommendations: ZoneRecommendationDto[]
+}
+
+export async function saveAutomationStrategy(
+  locationId: string,
+  strategyKey: StrategyKey,
+): Promise<{ location_id: string; strategy_key: StrategyKey }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/locations/${locationId}/automation/strategy`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        strategy_key: strategyKey,
+      } satisfies StrategySelectionRequest),
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(
+        response,
+        'Failed to save automation strategy',
+      ),
+    )
+  }
+
+  return response.json()
+}
+
+export async function evaluateAutomation(
+  locationId: string,
+): Promise<AutomationEvaluationDto> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/locations/${locationId}/automation/evaluate`,
+    {
+      method: 'POST',
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(
+        response,
+        'Failed to evaluate automation',
       ),
     )
   }

@@ -1,9 +1,11 @@
+
 import { useState } from 'react'
 
 import DeviceFamilySwitcher from '../features/devices/DeviceFamilySwitcher'
 import DeviceList from '../features/devices/DeviceList'
 import LocationManager from '../features/locations/LocationManager'
 import SensorList from '../features/sensors/SensorList'
+import StrategyPanel from '../features/automation/StrategyPanel'
 
 type DeviceFamily = 'simulation' | 'edge'
 
@@ -66,7 +68,11 @@ export default function DashboardPage() {
           <article
             key={section.id}
             id={section.id}
-            className="rounded-xl border bg-white p-6 shadow-sm"
+            className={`rounded-xl border bg-white p-6 shadow-sm ${
+              section.id === 'automation'
+                ? 'sm:col-span-2 lg:col-span-3'
+                : ''
+            }`}
           >
             <h3 className="text-lg font-semibold">
               {section.title}
@@ -86,13 +92,15 @@ export default function DashboardPage() {
                   devices={[]}
                 />
 
-                <DeviceList
-                  family={deviceFamily}
-                />
+                <DeviceList family={deviceFamily} />
               </div>
             ) : section.id === 'configuration' ? (
               <div className="mt-6">
                 <LocationManager />
+              </div>
+            ) : section.id === 'automation' ? (
+              <div className="mt-6">
+                <StrategyPanel />
               </div>
             ) : (
               <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">

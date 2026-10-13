@@ -1,3 +1,4 @@
+
 from datetime import datetime
 from uuid import UUID
 
@@ -49,10 +50,7 @@ class ZoneRow(Base):
 
     location_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(
-            "locations.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey("locations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -128,20 +126,14 @@ class DeviceRow(Base):
 
     zone_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(
-            "zones.id",
-            ondelete="SET NULL",
-        ),
+        ForeignKey("zones.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
 
     location_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(
-            "locations.id",
-            ondelete="SET NULL",
-        ),
+        ForeignKey("locations.id", ondelete="SET NULL"),
         nullable=True,
     )
 
@@ -174,10 +166,7 @@ class ReadingRow(Base):
 
     device_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey(
-            "devices.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey("devices.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -208,4 +197,42 @@ class ReadingRow(Base):
             "device_id",
             "recorded_at",
         ),
+    )
+
+
+class AutomationRuleRow(Base):
+    __tablename__ = "automation_rules"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+
+    location_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("locations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    strategy_key: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'conservative'"),
+    )
+
+    parameters: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        onupdate=datetime.now,
     )
