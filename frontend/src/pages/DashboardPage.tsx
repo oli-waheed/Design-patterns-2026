@@ -6,6 +6,7 @@ import DeviceList from '../features/devices/DeviceList'
 import LocationManager from '../features/locations/LocationManager'
 import SensorList from '../features/sensors/SensorList'
 import StrategyPanel from '../features/automation/StrategyPanel'
+import OverviewPanel from '../features/overview/OverviewPanel'
 
 type DeviceFamily = 'simulation' | 'edge'
 
@@ -54,10 +55,7 @@ export default function DashboardPage() {
   return (
     <section>
       <div className="mb-8">
-        <h2 className="text-3xl font-bold">
-          Dashboard
-        </h2>
-
+        <h2 className="text-3xl font-bold">Dashboard</h2>
         <p className="mt-2 text-gray-600">
           Smart greenhouse monitoring and control.
         </p>
@@ -69,14 +67,12 @@ export default function DashboardPage() {
             key={section.id}
             id={section.id}
             className={`rounded-xl border bg-white p-6 shadow-sm ${
-              section.id === 'automation'
+              section.id === 'automation' || section.id === 'overview'
                 ? 'sm:col-span-2 lg:col-span-3'
                 : ''
             }`}
           >
-            <h3 className="text-lg font-semibold">
-              {section.title}
-            </h3>
+            <h3 className="text-lg font-semibold">{section.title}</h3>
 
             <p className="mt-2 text-sm text-gray-600">
               {section.description}
@@ -91,7 +87,6 @@ export default function DashboardPage() {
                   onFamilyChange={setDeviceFamily}
                   devices={[]}
                 />
-
                 <DeviceList family={deviceFamily} />
               </div>
             ) : section.id === 'configuration' ? (
@@ -102,6 +97,8 @@ export default function DashboardPage() {
               <div className="mt-6">
                 <StrategyPanel />
               </div>
+            ) : section.id === 'overview' ? (
+              <OverviewPanel />
             ) : (
               <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
                 Placeholder

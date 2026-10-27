@@ -116,10 +116,7 @@ export async function createSensor(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to create sensor',
-      ),
+      await getErrorMessage(response, 'Failed to create sensor'),
     )
   }
 
@@ -167,10 +164,7 @@ export async function provisionDevices(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to provision devices',
-      ),
+      await getErrorMessage(response, 'Failed to provision devices'),
     )
   }
 
@@ -194,10 +188,7 @@ export async function updateDeviceSampling(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to update sampling settings',
-      ),
+      await getErrorMessage(response, 'Failed to update sampling settings'),
     )
   }
 
@@ -206,19 +197,12 @@ export async function updateDeviceSampling(
 
 /* ---------------- Locations ---------------- */
 
-export async function getLocations(): Promise<
-  LocationSummaryDto[]
-> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/locations`,
-  )
+export async function getLocations(): Promise<LocationSummaryDto[]> {
+  const response = await fetch(`${API_BASE_URL}/api/locations`)
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to load locations',
-      ),
+      await getErrorMessage(response, 'Failed to load locations'),
     )
   }
 
@@ -234,10 +218,7 @@ export async function getLocation(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to load location',
-      ),
+      await getErrorMessage(response, 'Failed to load location'),
     )
   }
 
@@ -247,32 +228,24 @@ export async function getLocation(
 export async function createLocation(
   request: CreateLocationRequest,
 ): Promise<LocationResponseDto> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/locations`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
+  const response = await fetch(`${API_BASE_URL}/api/locations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
-  )
+    body: JSON.stringify(request),
+  })
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to create location',
-      ),
+      await getErrorMessage(response, 'Failed to create location'),
     )
   }
 
   return response.json()
 }
 
-export async function deleteLocation(
-  locationId: string,
-): Promise<void> {
+export async function deleteLocation(locationId: string): Promise<void> {
   const response = await fetch(
     `${API_BASE_URL}/api/locations/${locationId}`,
     {
@@ -282,10 +255,7 @@ export async function deleteLocation(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to delete location',
-      ),
+      await getErrorMessage(response, 'Failed to delete location'),
     )
   }
 }
@@ -309,10 +279,7 @@ export async function addZone(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to add zone',
-      ),
+      await getErrorMessage(response, 'Failed to add zone'),
     )
   }
 
@@ -337,10 +304,7 @@ export async function updateZone(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to update zone',
-      ),
+      await getErrorMessage(response, 'Failed to update zone'),
     )
   }
 
@@ -360,10 +324,7 @@ export async function deleteZone(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to delete zone',
-      ),
+      await getErrorMessage(response, 'Failed to delete zone'),
     )
   }
 }
@@ -389,10 +350,7 @@ export async function assignDeviceToZone(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to assign device',
-      ),
+      await getErrorMessage(response, 'Failed to assign device'),
     )
   }
 }
@@ -407,10 +365,7 @@ export async function getZoneDevices(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to load zone devices',
-      ),
+      await getErrorMessage(response, 'Failed to load zone devices'),
     )
   }
 
@@ -461,10 +416,7 @@ export async function saveAutomationStrategy(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to save automation strategy',
-      ),
+      await getErrorMessage(response, 'Failed to save automation strategy'),
     )
   }
 
@@ -483,10 +435,61 @@ export async function evaluateAutomation(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(
-        response,
-        'Failed to evaluate automation',
-      ),
+      await getErrorMessage(response, 'Failed to evaluate automation'),
+    )
+  }
+
+  return response.json()
+}
+
+/* ---------------- Overview (Phase 7) ---------------- */
+
+export type OverviewReadingDto = {
+  device_id: string
+  value: number
+  unit: string
+  recorded_at: string
+  tracking_enabled: boolean
+  sampling_interval_seconds: number
+}
+
+export type OverviewDeviceDto = {
+  id: string
+  device_type: string
+  role: 'sensor' | 'actuator' | string
+  display_name: string | null
+}
+
+export type OverviewZoneDto = {
+  id: string
+  name: string
+  moisture_threshold_low: number
+  moisture_threshold_high: number
+  devices: OverviewDeviceDto[]
+  latest_readings: OverviewReadingDto[]
+}
+
+export type OverviewResponseDto = {
+  location: LocationSummaryDto
+  device_counts: {
+    sensor: number
+    actuator: number
+  }
+  zones: OverviewZoneDto[]
+  strategy_key: string | null
+  last_recommendation: AutomationEvaluationDto | null
+}
+
+export async function getLocationOverview(
+  locationId: string,
+): Promise<OverviewResponseDto> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/locations/${locationId}/overview`,
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, 'Failed to load location overview'),
     )
   }
 

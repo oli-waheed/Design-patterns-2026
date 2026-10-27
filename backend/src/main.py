@@ -15,6 +15,7 @@ from interfaces.api.automation import router as automation_router
 from interfaces.api.devices import router as devices_router
 from interfaces.api.health import router as health_router
 from interfaces.api.locations import router as locations_router
+from interfaces.api.overview import router as overview_router
 from interfaces.api.sensors import router as sensors_router
 
 
@@ -85,9 +86,10 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(sensors_router)
-app.include_router(devices_router)
 app.include_router(locations_router)
 app.include_router(automation_router)
+app.include_router(devices_router)
+app.include_router(overview_router)
 
 
 @app.get("/")
