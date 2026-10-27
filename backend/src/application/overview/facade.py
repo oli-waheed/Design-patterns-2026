@@ -1,9 +1,6 @@
 
 from uuid import UUID
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
-
 from application.automation.automation_service import AutomationService
 from application.overview.dto import (
     OverviewDeviceCountsDto,
@@ -14,93 +11,49 @@ from application.overview.dto import (
     OverviewZoneDto,
 )
 from infrastructure.persistence.automation_repository import AutomationRepository
-from infrastructure.persistence.models import (
-    DeviceRow,
-    LocationRow,
-    ReadingRow,
-    ZoneRow,
-)
+from infrastructure.persistence.overview_repository import OverviewRepository
 
 
 class OverviewFacade:
-    """Assemble the data required by the greenhouse overview."""
+    """Coordinate overview data and assemble the response DTO."""
 
     def __init__(
         self,
-        db: Session,
+        overview_repository: OverviewRepository,
         automation_service: AutomationService,
         automation_repository: AutomationRepository,
     ):
-        self._db = db
+        self._overview_repository = overview_repository
         self._automation_service = automation_service
         self._automation_repository = automation_repository
 
     def get_overview(self, location_id: UUID) -> OverviewResponseDto:
-        location = self._db.get(LocationRow, location_id)
+        location = self._overview_repository.get_location(location_id)
 
         if location is None:
             raise LookupError("Location not found.")
 
-        zones = list(
-            self._db.scalars(
-                select(ZoneRow)
-                .where(ZoneRow.location_id == location_id)
-                .order_by(ZoneRow.name)
-            ).all()
-        )
+        zones = self._overview_repository.list_zones(location_id)
+        devices = self._overview_repository.list_assigned_devices(location_id)
 
-        # Only devices assigned to a zone at this location are included.
-        devices = list(
-            self._db.scalars(
-                select(DeviceRow)
-                .where(
-                    DeviceRow.location_id == location_id,
-                    DeviceRow.zone_id.is_not(None),
-                )
-                .order_by(DeviceRow.created_at.desc())
-            ).all()
-        )
+        device_by_id = {device.id: device for device in devices}
+        device_ids = list(device_by_id)
 
-        device_ids = [device.id for device in devices]
+        reading_rows = self._overview_repository.get_latest_readings(device_ids)
 
-        # Fetch the newest reading for all assigned devices in one query.
-        latest_readings_by_device = {}
-
-        if device_ids:
-            ranked_readings = (
-                select(
-                    ReadingRow.device_id,
-                    ReadingRow.value,
-                    ReadingRow.unit,
-                    ReadingRow.recorded_at,
-                    func.row_number()
-                    .over(
-                        partition_by=ReadingRow.device_id,
-                        order_by=ReadingRow.recorded_at.desc(),
-                    )
-                    .label("reading_rank"),
-                )
-                .where(ReadingRow.device_id.in_(device_ids))
-                .subquery()
+        readings_by_device = {
+            row.device_id: OverviewReadingDto(
+                device_id=row.device_id,
+                value=float(row.value),
+                unit=row.unit,
+                recorded_at=row.recorded_at,
+                tracking_enabled=device_by_id[row.device_id].tracking_enabled,
+                sampling_interval_seconds=(
+                    device_by_id[row.device_id].sampling_interval_seconds
+                ),
             )
-
-            reading_statement = select(ranked_readings).where(
-                ranked_readings.c.reading_rank == 1
-            )
-
-            for row in self._db.execute(reading_statement).all():
-                latest_readings_by_device[row.device_id] = OverviewReadingDto(
-                    device_id=row.device_id,
-                    value=float(row.value),
-                    unit=row.unit,
-                    recorded_at=row.recorded_at,
-                    tracking_enabled=self._tracking_enabled(
-                        devices, row.device_id
-                    ),
-                    sampling_interval_seconds=self._sampling_interval(
-                        devices, row.device_id
-                    ),
-                )
+            for row in reading_rows
+        }
 
         devices_by_zone = {zone.id: [] for zone in zones}
         readings_by_zone = {zone.id: [] for zone in zones}
@@ -126,7 +79,7 @@ class OverviewFacade:
                 )
             )
 
-            reading = latest_readings_by_device.get(device.id)
+            reading = readings_by_device.get(device.id)
             if reading is not None:
                 readings_by_zone[device.zone_id].append(reading)
 
@@ -166,20 +119,4 @@ class OverviewFacade:
             ],
             strategy_key=strategy_key,
             last_recommendation=last_recommendation,
-        )
-
-    @staticmethod
-    def _tracking_enabled(devices, device_id: UUID) -> bool:
-        return next(
-            device.tracking_enabled
-            for device in devices
-            if device.id == device_id
-        )
-
-    @staticmethod
-    def _sampling_interval(devices, device_id: UUID) -> int:
-        return next(
-            device.sampling_interval_seconds
-            for device in devices
-            if device.id == device_id
         )

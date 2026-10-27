@@ -11,6 +11,7 @@ from infrastructure.db import get_db
 from infrastructure.persistence.automation_repository import (
     AutomationRepository,
 )
+from infrastructure.persistence.overview_repository import OverviewRepository
 
 
 router = APIRouter(
@@ -23,10 +24,11 @@ def get_overview_facade(
     db: Session = Depends(get_db),
 ) -> OverviewFacade:
     automation_repository = AutomationRepository(db)
+    overview_repository = OverviewRepository(db)
     automation_service = AutomationService(automation_repository)
 
     return OverviewFacade(
-        db=db,
+        overview_repository=overview_repository,
         automation_service=automation_service,
         automation_repository=automation_repository,
     )
