@@ -1,3 +1,4 @@
+
 from uuid import UUID
 
 from sqlalchemy import select
@@ -5,7 +6,11 @@ from sqlalchemy.orm import Session
 
 from domain.devices.entity import Device
 from domain.sensors.entity import Sensor
-from infrastructure.persistence.models import DeviceRow, ZoneRow
+from infrastructure.persistence.models import (
+    ActuatorStateRow,
+    DeviceRow,
+    ZoneRow,
+)
 
 
 class DeviceRepository:
@@ -68,11 +73,26 @@ class DeviceRepository:
             tracking_enabled=device.tracking_enabled,
         )
 
-        self._db.add(row)
-        self._db.commit()
-        self._db.refresh(row)
+        try:
+            self._db.add(row)
+            self._db.flush()
 
-        return self._row_to_device(row)
+            if row.role == "actuator":
+                self._db.add(
+                    ActuatorStateRow(
+                        device_id=row.id,
+                        state="idle",
+                    )
+                )
+
+            self._db.commit()
+            self._db.refresh(row)
+
+            return self._row_to_device(row)
+
+        except Exception:
+            self._db.rollback()
+            raise
 
     def save_devices(self, devices: list[Device]) -> list[Device]:
         rows = [
@@ -88,13 +108,40 @@ class DeviceRepository:
             for device in devices
         ]
 
-        self._db.add_all(rows)
-        self._db.commit()
+        try:
+            self._db.add_all(rows)
+            self._db.flush()
 
-        for row in rows:
-            self._db.refresh(row)
+            actuator_states = [
+                ActuatorStateRow(
+                    device_id=row.id,
+                    state="idle",
+                )
+                for row in rows
+                if row.role == "actuator"
+            ]
 
-        return [self._row_to_device(row) for row in rows]
+            if actuator_states:
+                self._db.add_all(actuator_states)
+
+            self._db.commit()
+
+            for row in rows:
+                self._db.refresh(row)
+
+            return [self._row_to_device(row) for row in rows]
+
+        except Exception:
+            self._db.rollback()
+            raise
+
+    def get_device_by_id(self, device_id: UUID) -> Device | None:
+        row = self._db.get(DeviceRow, device_id)
+
+        if row is None:
+            return None
+
+        return self._row_to_device(row)
 
     def list_devices(
         self,
@@ -121,6 +168,33 @@ class DeviceRepository:
             self._row_to_device(row)
             for row in rows
         ]
+
+    def get_actuator_state(self, device_id: UUID) -> str | None:
+        statement = select(ActuatorStateRow.state).where(
+            ActuatorStateRow.device_id == device_id
+        )
+
+        return self._db.scalar(statement)
+
+    def update_actuator_state(
+        self,
+        device_id: UUID,
+        state: str,
+    ) -> bool:
+        row = self._db.get(ActuatorStateRow, device_id)
+
+        if row is None:
+            return False
+
+        try:
+            row.state = state
+            self._db.commit()
+            self._db.refresh(row)
+            return True
+
+        except Exception:
+            self._db.rollback()
+            raise
 
     def assign_zone(
         self,

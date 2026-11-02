@@ -1,3 +1,4 @@
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,6 +9,7 @@ from application.devices.dto import DeviceDto
 from application.devices.mapper import DeviceMapper
 from application.devices.service import DevicesService
 from application.locations.dto import DeviceAssignmentDto
+from domain.actuators.state import ActuatorState, IllegalTransitionError
 from infrastructure.db import get_db
 from infrastructure.persistence.device_repository import DeviceRepository
 
@@ -29,6 +31,16 @@ class SamplingResponse(BaseModel):
     device_id: UUID
     sampling_interval_seconds: int
     tracking_enabled: bool
+
+
+class ActuatorTransitionRequest(BaseModel):
+    target: ActuatorState
+
+
+class ActuatorStateResponse(BaseModel):
+    device_id: UUID
+    state: str
+    allowed_commands: list[str]
 
 
 def get_devices_service(
@@ -80,6 +92,61 @@ def provision_devices(
         DeviceMapper.to_dto(device)
         for device in devices
     ]
+
+
+@router.get(
+    "/{device_id}/state",
+    response_model=ActuatorStateResponse,
+)
+def get_actuator_state(
+    device_id: UUID,
+    service: DevicesService = Depends(get_devices_service),
+) -> ActuatorStateResponse:
+    result = service.get_actuator_state(device_id)
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actuator not found.",
+        )
+
+    return ActuatorStateResponse(**result)
+
+
+@router.post(
+    "/{device_id}/transition",
+    response_model=ActuatorStateResponse,
+)
+def transition_actuator(
+    device_id: UUID,
+    request: ActuatorTransitionRequest,
+    service: DevicesService = Depends(get_devices_service),
+) -> ActuatorStateResponse:
+    try:
+        result = service.transition_actuator(
+            device_id=device_id,
+            target=request.target,
+        )
+
+    except IllegalTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actuator not found.",
+        )
+
+    return ActuatorStateResponse(**result)
 
 
 @router.patch(

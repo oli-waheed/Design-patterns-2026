@@ -1,7 +1,10 @@
+
 from uuid import UUID
 
 from domain.devices.entity import Device
 from domain.devices.family_factory import get_family_factory
+from domain.actuators.context import ActuatorContext
+from domain.actuators.state import ActuatorState
 from infrastructure.persistence.device_repository import DeviceRepository
 
 
@@ -63,3 +66,54 @@ class DevicesService:
             location_id=location_id,
             zone_id=zone_id,
         )
+
+    def get_actuator_state(self, device_id: UUID) -> dict | None:
+        device = self._repository.get_device_by_id(device_id)
+
+        if device is None or device.role != "actuator":
+            return None
+
+        current_state = self._repository.get_actuator_state(device_id)
+
+        if current_state is None:
+            return None
+
+        context = ActuatorContext(current_state)
+
+        return {
+            "device_id": device_id,
+            "state": context.state.value,
+            "allowed_commands": context.allowed_commands(),
+        }
+
+    def transition_actuator(
+        self,
+        device_id: UUID,
+        target: ActuatorState | str,
+    ) -> dict | None:
+        device = self._repository.get_device_by_id(device_id)
+
+        if device is None or device.role != "actuator":
+            return None
+
+        current_state = self._repository.get_actuator_state(device_id)
+
+        if current_state is None:
+            return None
+
+        context = ActuatorContext(current_state)
+
+        # The domain context validates the requested transition.
+        context.transition(target)
+
+        # Update the database only after successful validation.
+        self._repository.update_actuator_state(
+            device_id=device_id,
+            state=context.state.value,
+        )
+
+        return {
+            "device_id": device_id,
+            "state": context.state.value,
+            "allowed_commands": context.allowed_commands(),
+        }

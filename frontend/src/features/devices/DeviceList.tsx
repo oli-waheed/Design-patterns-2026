@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react'
 
 import {
@@ -7,6 +8,15 @@ import {
   getLocations,
   provisionDevices,
 } from '../../services/api'
+
+import {
+  getActuatorState,
+} from '../../services/actuatorApi'
+
+import type {
+  ActuatorStateDto,
+  ActuatorState,
+} from '../../services/actuatorApi'
 
 import type {
   DeviceDto,
@@ -20,21 +30,26 @@ type DeviceListProps = {
   family: DeviceFamily
 }
 
+const stateStyles: Record<ActuatorState, string> = {
+  off: 'bg-slate-100 text-slate-700',
+  idle: 'bg-slate-100 text-slate-700',
+  running: 'bg-emerald-100 text-emerald-700',
+  error: 'bg-red-100 text-red-700',
+  maintenance: 'bg-amber-100 text-amber-800',
+}
+
 export default function DeviceList({
   family,
 }: DeviceListProps) {
   const [devices, setDevices] = useState<DeviceDto[]>([])
-  const [locations, setLocations] = useState<
-    LocationResponseDto[]
-  >([])
+  const [locations, setLocations] = useState<LocationResponseDto[]>([])
+  const [actuatorStates, setActuatorStates] = useState<
+    Record<string, ActuatorStateDto>
+  >({})
 
   const [loading, setLoading] = useState(true)
-  const [provisioning, setProvisioning] =
-    useState(false)
-  const [error, setError] = useState<string | null>(
-    null,
-  )
-
+  const [provisioning, setProvisioning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [assigningDeviceId, setAssigningDeviceId] =
     useState<string | null>(null)
 
@@ -45,6 +60,31 @@ export default function DeviceList({
 
       const data = await getDevices(family)
       setDevices(data)
+
+      const actuators = data.filter(
+        (device) => device.role === 'actuator',
+      )
+
+      const stateResults = await Promise.all(
+        actuators.map(async (device) => {
+          try {
+            const state = await getActuatorState(device.id)
+            return [device.id, state] as const
+          } catch {
+            return null
+          }
+        }),
+      )
+
+      const stateMap: Record<string, ActuatorStateDto> = {}
+
+      stateResults.forEach((result) => {
+        if (result) {
+          stateMap[result[0]] = result[1]
+        }
+      })
+
+      setActuatorStates(stateMap)
     } catch (err) {
       setError(
         err instanceof Error
@@ -61,12 +101,9 @@ export default function DeviceList({
       const summaries: LocationSummaryDto[] =
         await getLocations()
 
-      const fullLocations =
-        await Promise.all(
-          summaries.map((location) =>
-            getLocation(location.id),
-          ),
-        )
+      const fullLocations = await Promise.all(
+        summaries.map((location) => getLocation(location.id)),
+      )
 
       setLocations(fullLocations)
     } catch (err) {
@@ -88,13 +125,8 @@ export default function DeviceList({
       setProvisioning(true)
       setError(null)
 
-      const newDevices =
-        await provisionDevices(family)
-
-      setDevices((current) => [
-        ...newDevices,
-        ...current,
-      ])
+      await provisionDevices(family)
+      await loadDevices()
     } catch (err) {
       setError(
         err instanceof Error
@@ -115,13 +147,9 @@ export default function DeviceList({
       setError(null)
 
       if (!value) {
-        await assignDeviceToZone(
-          deviceId,
-          null,
-        )
+        await assignDeviceToZone(deviceId, null)
       } else {
-        const [locationId, zoneId] =
-          value.split(':')
+        const [locationId, zoneId] = value.split(':')
 
         if (!locationId || !zoneId) {
           throw new Error(
@@ -129,10 +157,7 @@ export default function DeviceList({
           )
         }
 
-        await assignDeviceToZone(
-          deviceId,
-          zoneId,
-        )
+        await assignDeviceToZone(deviceId, zoneId)
       }
 
       await loadDevices()
@@ -147,13 +172,8 @@ export default function DeviceList({
     }
   }
 
-  function getAssignmentValue(
-    device: DeviceDto,
-  ): string {
-    if (
-      !device.location_id ||
-      !device.zone_id
-    ) {
+  function getAssignmentValue(device: DeviceDto): string {
+    if (!device.location_id || !device.zone_id) {
       return ''
     }
 
@@ -199,102 +219,133 @@ export default function DeviceList({
         </p>
       )}
 
-      {!loading &&
-        !error &&
-        devices.length === 0 && (
-          <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-500">
-            No devices found for this family.
-          </p>
-        )}
+      {!loading && !error && devices.length === 0 && (
+        <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-500">
+          No devices found for this family.
+        </p>
+      )}
 
       {!loading && devices.length > 0 && (
         <div className="space-y-3">
-          {devices.map((device) => (
-            <article
-              key={device.id}
-              className="rounded-lg border bg-white p-4"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h4 className="font-semibold">
-                    {device.display_name}
-                  </h4>
+          {devices.map((device) => {
+            const actuatorState =
+              actuatorStates[device.id]
 
-                  <p className="mt-1 text-sm text-gray-500">
-                    Type: {device.device_type}
-                  </p>
+            return (
+              <article
+                key={device.id}
+                className="rounded-lg border bg-white p-4"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="font-semibold">
+                      {device.display_name}
+                    </h4>
 
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
-                      Role: {device.role}
-                    </span>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Type: {device.device_type}
+                    </p>
 
-                    <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
-                      Family: {device.device_family}
-                    </span>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                        Role: {device.role}
+                      </span>
+
+                      <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                        Family: {device.device_family}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="mt-4">
-                <label
-                  htmlFor={`zone-${device.id}`}
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Location / Zone
-                </label>
+                {device.role === 'actuator' && (
+                  <div className="mt-4 rounded-md bg-gray-50 p-3">
+                    <p className="text-sm font-medium text-gray-700">
+                      Actuator state
+                    </p>
 
-                <select
-                  id={`zone-${device.id}`}
-                  value={getAssignmentValue(
-                    device,
-                  )}
-                  onChange={(event) =>
-                    handleAssignment(
-                      device.id,
-                      event.target.value,
-                    )
-                  }
-                  disabled={
-                    assigningDeviceId ===
-                    device.id
-                  }
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                >
-                  <option value="">
-                    Unassigned
-                  </option>
+                    {actuatorState ? (
+                      <>
+                        <span
+                          className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+                            stateStyles[actuatorState.state]
+                          }`}
+                        >
+                          {actuatorState.state}
+                        </span>
 
-                  {locations.map((location) =>
-                    location.zones.map((zone) => (
-                      <option
-                        key={zone.id}
-                        value={`${location.location.id}:${zone.id}`}
-                      >
-                        {location.location.name} —{' '}
-                        {zone.name}
-                      </option>
-                    )),
-                  )}
-                </select>
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-gray-600">
+                            Allowed commands
+                          </p>
 
-                {assigningDeviceId ===
-                  device.id && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Saving assignment...
-                  </p>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            {actuatorState.allowed_commands.map(
+                              (command) => (
+                                <span
+                                  key={command}
+                                  className="rounded bg-white px-2 py-1 text-xs text-gray-700"
+                                >
+                                  {command}
+                                </span>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-xs text-gray-500">
+                        State information unavailable.
+                      </p>
+                    )}
+                  </div>
                 )}
-              </div>
 
-              <pre className="mt-4 overflow-x-auto rounded-md bg-gray-50 p-3 text-xs text-gray-700">
-                {JSON.stringify(
-                  device.default_config,
-                  null,
-                  2,
-                )}
-              </pre>
-            </article>
-          ))}
+                <div className="mt-4">
+                  <label
+                    htmlFor={`zone-${device.id}`}
+                    className="mb-2 block text-sm font-medium"
+                  >
+                    Location / Zone
+                  </label>
+
+                  <select
+                    id={`zone-${device.id}`}
+                    value={getAssignmentValue(device)}
+                    onChange={(event) =>
+                      handleAssignment(
+                        device.id,
+                        event.target.value,
+                      )
+                    }
+                    disabled={assigningDeviceId === device.id}
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                  >
+                    <option value="">Unassigned</option>
+
+                    {locations.map((location) =>
+                      location.zones.map((zone) => (
+                        <option
+                          key={zone.id}
+                          value={`${location.location.id}:${zone.id}`}
+                        >
+                          {location.location.name} — {zone.name}
+                        </option>
+                      )),
+                    )}
+                  </select>
+                </div>
+
+                <pre className="mt-4 overflow-x-auto rounded-md bg-gray-50 p-3 text-xs text-gray-700">
+                  {JSON.stringify(
+                    device.default_config,
+                    null,
+                    2,
+                  )}
+                </pre>
+              </article>
+            )
+          })}
         </div>
       )}
     </div>
