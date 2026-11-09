@@ -176,6 +176,21 @@ class DeviceRepository:
 
         return self._db.scalar(statement)
 
+    def get_actuator_state_details(
+        self,
+        device_id: UUID,
+    ) -> dict | None:
+        """Return actuator state and its last update timestamp."""
+        row = self._db.get(ActuatorStateRow, device_id)
+
+        if row is None:
+            return None
+
+        return {
+            "state": row.state,
+            "updated_at": row.updated_at,
+        }
+
     def update_actuator_state(
         self,
         device_id: UUID,

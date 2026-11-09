@@ -1,28 +1,41 @@
 
+from typing import Any
 from uuid import UUID
 
 from domain.devices.entity import Device
 from domain.devices.family_factory import get_family_factory
 from domain.actuators.context import ActuatorContext
 from domain.actuators.state import ActuatorState
+from infrastructure.adapters.actuators.simulation import (
+    SimulationActuatorAdapter,
+)
+from infrastructure.adapters.actuators.max_runtime_decorator import (
+    MaxRunTimeActuatorDecorator,
+)
+from infrastructure.adapters.actuators.logging_decorator import (
+    LoggingActuatorDecorator,
+)
 from infrastructure.persistence.device_repository import DeviceRepository
+from infrastructure.persistence.execution_log_repository import (
+    ExecutionLogRepository,
+)
 
 
 class DevicesService:
     def __init__(
         self,
         repository: DeviceRepository,
+        execution_log_repository: ExecutionLogRepository | None = None,
     ):
         self._repository = repository
+        self._execution_log_repository = execution_log_repository
 
     def provision_family(
         self,
         family: str,
     ) -> list[Device]:
         factory = get_family_factory(family)
-
         devices = factory.create_device_set()
-
         return self._repository.save_devices(devices)
 
     def list_devices(
@@ -116,4 +129,48 @@ class DevicesService:
             "device_id": device_id,
             "state": context.state.value,
             "allowed_commands": context.allowed_commands(),
+        }
+
+    def execute_actuator_command(
+        self,
+        device_id: UUID,
+        command: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict | None:
+        """Execute an actuator command through the decorator chain."""
+        device = self._repository.get_device_by_id(device_id)
+
+        if device is None or device.role != "actuator":
+            return None
+
+        if self._execution_log_repository is None:
+            raise RuntimeError(
+                "Execution logging repository is not configured."
+            )
+
+        # The real simulation adapter is the innermost component.
+        simulation_adapter = SimulationActuatorAdapter()
+
+        # Apply the runtime policy around the simulation adapter.
+        runtime_decorator = MaxRunTimeActuatorDecorator(
+            wrapped=simulation_adapter,
+            device_repository=self._repository,
+        )
+
+        # Logging is the outermost decorator.
+        actuator = LoggingActuatorDecorator(
+            wrapped=runtime_decorator,
+            execution_log_repository=self._execution_log_repository,
+        )
+
+        actuator.apply(
+            device_id=device_id,
+            command=command,
+            payload=payload or {},
+        )
+
+        return {
+            "device_id": device_id,
+            "command": command,
+            "success": True,
         }

@@ -1,4 +1,3 @@
-
 import { useState } from 'react'
 
 import DeviceFamilySwitcher from '../features/devices/DeviceFamilySwitcher'
@@ -7,6 +6,7 @@ import LocationManager from '../features/locations/LocationManager'
 import SensorList from '../features/sensors/SensorList'
 import StrategyPanel from '../features/automation/StrategyPanel'
 import OverviewPanel from '../features/overview/OverviewPanel'
+import ExecutionLog from '../features/actuators/ExecutionLog'
 
 type DeviceFamily = 'simulation' | 'edge'
 
@@ -48,7 +48,7 @@ export default function DashboardPage() {
     {
       id: 'events',
       title: 'Events',
-      description: 'View recent greenhouse events.',
+      description: 'View recent actuator execution history.',
     },
   ]
 
@@ -72,7 +72,9 @@ export default function DashboardPage() {
                 : ''
             }`}
           >
-            <h3 className="text-lg font-semibold">{section.title}</h3>
+            <h3 className="text-lg font-semibold">
+              {section.title}
+            </h3>
 
             <p className="mt-2 text-sm text-gray-600">
               {section.description}
@@ -99,6 +101,8 @@ export default function DashboardPage() {
               </div>
             ) : section.id === 'overview' ? (
               <OverviewPanel />
+            ) : section.id === 'events' ? (
+              <ExecutionLog />
             ) : (
               <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
                 Placeholder
