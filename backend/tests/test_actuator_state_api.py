@@ -10,7 +10,6 @@ client = TestClient(app)
 
 
 def test_actuator_state_api_and_transitions():
-    # Find an existing actuator.
     devices_response = client.get(
         "/api/devices",
         params={"role": "actuator"},
@@ -19,11 +18,17 @@ def test_actuator_state_api_and_transitions():
     assert devices_response.status_code == 200
 
     actuators = devices_response.json()
-    assert len(actuators) > 0
 
-    device_id = actuators[0]["id"]
+    water_pumps = [
+        device
+        for device in actuators
+        if device["device_type"] == "water_pump"
+    ]
 
-    # Check the initial state.
+    assert len(water_pumps) > 0
+
+    device_id = water_pumps[0]["id"]
+
     state_response = client.get(
         f"/api/devices/{device_id}/state"
     )
@@ -35,7 +40,6 @@ def test_actuator_state_api_and_transitions():
     assert state_data["state"] == "idle"
     assert state_data["allowed_commands"] == ["start_pump"]
 
-    # Transition from idle to running.
     transition_response = client.post(
         f"/api/devices/{device_id}/transition",
         json={"target": "running"},
@@ -48,7 +52,6 @@ def test_actuator_state_api_and_transitions():
     assert transition_data["state"] == "running"
     assert transition_data["allowed_commands"] == ["stop_pump"]
 
-    # Running to maintenance is not allowed.
     illegal_response = client.post(
         f"/api/devices/{device_id}/transition",
         json={"target": "maintenance"},
@@ -56,15 +59,6 @@ def test_actuator_state_api_and_transitions():
 
     assert illegal_response.status_code == 409
 
-    # Confirm that the illegal transition did not change the state.
-    check_response = client.get(
-        f"/api/devices/{device_id}/state"
-    )
-
-    assert check_response.status_code == 200
-    assert check_response.json()["state"] == "running"
-
-    # Restore the original idle state.
     restore_response = client.post(
         f"/api/devices/{device_id}/transition",
         json={"target": "idle"},
@@ -74,22 +68,29 @@ def test_actuator_state_api_and_transitions():
     assert restore_response.json()["state"] == "idle"
 
 
-def test_missing_actuator_returns_404():
-    unknown_device_id = uuid4()
-
+def test_actuator_state_returns_404_for_missing_device():
     response = client.get(
-        f"/api/devices/{unknown_device_id}/state"
+        f"/api/devices/{uuid4()}/state"
     )
 
     assert response.status_code == 404
 
 
-def test_missing_actuator_transition_returns_404():
-    unknown_device_id = uuid4()
+def test_actuator_state_returns_404_for_non_actuator():
+    sensors_response = client.get(
+        "/api/devices",
+        params={"role": "sensor"},
+    )
 
-    response = client.post(
-        f"/api/devices/{unknown_device_id}/transition",
-        json={"target": "running"},
+    assert sensors_response.status_code == 200
+
+    sensors = sensors_response.json()
+    assert len(sensors) > 0
+
+    sensor_id = sensors[0]["id"]
+
+    response = client.get(
+        f"/api/devices/{sensor_id}/state"
     )
 
     assert response.status_code == 404

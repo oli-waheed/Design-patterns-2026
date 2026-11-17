@@ -11,6 +11,7 @@ from infrastructure.db import SessionLocal
 from infrastructure.persistence.device_repository import DeviceRepository
 from infrastructure.persistence.reading_repository import ReadingRepository
 from infrastructure.settings import settings
+from interfaces.api.commands import router as commands_router
 from interfaces.api.automation import router as automation_router
 from interfaces.api.devices import (
     actuator_router,
@@ -91,6 +92,7 @@ app.include_router(health_router)
 app.include_router(sensors_router)
 app.include_router(locations_router)
 app.include_router(automation_router)
+app.include_router(commands_router)
 app.include_router(devices_router)
 app.include_router(actuator_router)
 app.include_router(overview_router)

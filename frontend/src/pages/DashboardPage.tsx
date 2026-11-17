@@ -1,3 +1,4 @@
+
 import { useState } from 'react'
 
 import DeviceFamilySwitcher from '../features/devices/DeviceFamilySwitcher'
@@ -7,6 +8,7 @@ import SensorList from '../features/sensors/SensorList'
 import StrategyPanel from '../features/automation/StrategyPanel'
 import OverviewPanel from '../features/overview/OverviewPanel'
 import ExecutionLog from '../features/actuators/ExecutionLog'
+import CommandPanel from '../features/actuators/CommandPanel'
 
 type DeviceFamily = 'simulation' | 'edge'
 
@@ -56,6 +58,7 @@ export default function DashboardPage() {
     <section>
       <div className="mb-8">
         <h2 className="text-3xl font-bold">Dashboard</h2>
+
         <p className="mt-2 text-gray-600">
           Smart greenhouse monitoring and control.
         </p>
@@ -67,7 +70,10 @@ export default function DashboardPage() {
             key={section.id}
             id={section.id}
             className={`rounded-xl border bg-white p-6 shadow-sm ${
-              section.id === 'automation' || section.id === 'overview'
+              section.id === 'automation' ||
+              section.id === 'overview' ||
+              section.id === 'controls' ||
+              section.id === 'events'
                 ? 'sm:col-span-2 lg:col-span-3'
                 : ''
             }`}
@@ -89,6 +95,7 @@ export default function DashboardPage() {
                   onFamilyChange={setDeviceFamily}
                   devices={[]}
                 />
+
                 <DeviceList family={deviceFamily} />
               </div>
             ) : section.id === 'configuration' ? (
@@ -101,6 +108,8 @@ export default function DashboardPage() {
               </div>
             ) : section.id === 'overview' ? (
               <OverviewPanel />
+            ) : section.id === 'controls' ? (
+              <CommandPanel family={deviceFamily} />
             ) : section.id === 'events' ? (
               <ExecutionLog />
             ) : (

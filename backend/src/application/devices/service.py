@@ -6,14 +6,9 @@ from domain.devices.entity import Device
 from domain.devices.family_factory import get_family_factory
 from domain.actuators.context import ActuatorContext
 from domain.actuators.state import ActuatorState
-from infrastructure.adapters.actuators.simulation import (
-    SimulationActuatorAdapter,
-)
-from infrastructure.adapters.actuators.max_runtime_decorator import (
-    MaxRunTimeActuatorDecorator,
-)
-from infrastructure.adapters.actuators.logging_decorator import (
-    LoggingActuatorDecorator,
+
+from infrastructure.adapters.actuators.factory import (
+    build_actuator_port,
 )
 from infrastructure.persistence.device_repository import DeviceRepository
 from infrastructure.persistence.execution_log_repository import (
@@ -80,6 +75,23 @@ class DevicesService:
             zone_id=zone_id,
         )
 
+    def _allowed_commands(
+        self,
+        device: Device,
+        context: ActuatorContext,
+    ) -> list[str]:
+        if device.device_type == "water_pump":
+            return context.allowed_commands()
+
+        if device.device_type == "grow_light":
+            if context.state in {
+                ActuatorState.IDLE,
+                ActuatorState.RUNNING,
+            }:
+                return ["set_light_level"]
+
+        return []
+
     def get_actuator_state(self, device_id: UUID) -> dict | None:
         device = self._repository.get_device_by_id(device_id)
 
@@ -96,7 +108,7 @@ class DevicesService:
         return {
             "device_id": device_id,
             "state": context.state.value,
-            "allowed_commands": context.allowed_commands(),
+            "allowed_commands": self._allowed_commands(device, context),
         }
 
     def transition_actuator(
@@ -116,10 +128,8 @@ class DevicesService:
 
         context = ActuatorContext(current_state)
 
-        # The domain context validates the requested transition.
         context.transition(target)
 
-        # Update the database only after successful validation.
         self._repository.update_actuator_state(
             device_id=device_id,
             state=context.state.value,
@@ -128,7 +138,7 @@ class DevicesService:
         return {
             "device_id": device_id,
             "state": context.state.value,
-            "allowed_commands": context.allowed_commands(),
+            "allowed_commands": self._allowed_commands(device, context),
         }
 
     def execute_actuator_command(
@@ -137,7 +147,6 @@ class DevicesService:
         command: str,
         payload: dict[str, Any] | None = None,
     ) -> dict | None:
-        """Execute an actuator command through the decorator chain."""
         device = self._repository.get_device_by_id(device_id)
 
         if device is None or device.role != "actuator":
@@ -148,18 +157,8 @@ class DevicesService:
                 "Execution logging repository is not configured."
             )
 
-        # The real simulation adapter is the innermost component.
-        simulation_adapter = SimulationActuatorAdapter()
-
-        # Apply the runtime policy around the simulation adapter.
-        runtime_decorator = MaxRunTimeActuatorDecorator(
-            wrapped=simulation_adapter,
+        actuator = build_actuator_port(
             device_repository=self._repository,
-        )
-
-        # Logging is the outermost decorator.
-        actuator = LoggingActuatorDecorator(
-            wrapped=runtime_decorator,
             execution_log_repository=self._execution_log_repository,
         )
 
