@@ -7,10 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from application.actuators.transition_service import (
+    ActuatorTransitionService,
+)
 from application.devices.dto import DeviceDto
 from application.devices.mapper import DeviceMapper
 from application.devices.service import DevicesService
 from application.locations.dto import DeviceAssignmentDto
+from composition import get_event_bus
+from domain.events.bus import EventBus
 from domain.actuators.state import ActuatorState, IllegalTransitionError
 from infrastructure.adapters.actuators.logging_decorator import (
     MaxRunTimeExceeded,
@@ -84,6 +89,16 @@ def get_devices_service(
     return DevicesService(
         repository=repository,
         execution_log_repository=execution_log_repository,
+    )
+
+
+def get_transition_service(
+    db: Session = Depends(get_db),
+    event_bus: EventBus = Depends(get_event_bus),
+) -> ActuatorTransitionService:
+    return ActuatorTransitionService(
+        repository=DeviceRepository(db),
+        event_bus=event_bus,
     )
 
 
@@ -163,10 +178,10 @@ def get_actuator_state(
 def transition_actuator(
     device_id: UUID,
     request: ActuatorTransitionRequest,
-    service: DevicesService = Depends(get_devices_service),
+    service: ActuatorTransitionService = Depends(get_transition_service),
 ) -> ActuatorStateResponse:
     try:
-        result = service.transition_actuator(
+        result = service.transition(
             device_id=device_id,
             target=request.target,
         )

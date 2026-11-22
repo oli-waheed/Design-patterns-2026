@@ -9,6 +9,7 @@ import StrategyPanel from '../features/automation/StrategyPanel'
 import OverviewPanel from '../features/overview/OverviewPanel'
 import ExecutionLog from '../features/actuators/ExecutionLog'
 import CommandPanel from '../features/actuators/CommandPanel'
+import EventFeed from '../components/alerts/EventFeed'
 
 type DeviceFamily = 'simulation' | 'edge'
 
@@ -50,7 +51,7 @@ export default function DashboardPage() {
     {
       id: 'events',
       title: 'Events',
-      description: 'View recent actuator execution history.',
+      description: 'Alerts from sensors and actuators, plus actuator execution history.',
     },
   ]
 
@@ -111,7 +112,10 @@ export default function DashboardPage() {
             ) : section.id === 'controls' ? (
               <CommandPanel family={deviceFamily} />
             ) : section.id === 'events' ? (
-              <ExecutionLog />
+              <div>
+                <EventFeed />
+                <ExecutionLog />
+              </div>
             ) : (
               <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
                 Placeholder

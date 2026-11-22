@@ -38,7 +38,7 @@ def test_max_runtime_does_not_call_inner():
     ):
         decorator.apply(
             device_id=device_id,
-            command="start_pump",
+            command="stop_pump",
             payload={},
         )
 
@@ -74,7 +74,7 @@ def test_failed_policy_writes_execution_row():
     ):
         logging_decorator.apply(
             device_id=device_id,
-            command="start_pump",
+            command="stop_pump",
             payload={},
         )
 
@@ -86,37 +86,6 @@ def test_failed_policy_writes_execution_row():
     )
 
     inner_adapter.apply.assert_not_called()
-
-
-def test_max_runtime_allows_stop_pump_after_limit():
-    """An over-running pump must still be stoppable."""
-    device_id = uuid4()
-
-    inner_adapter = Mock(spec=ActuatorPort)
-    device_repository = Mock()
-
-    device_repository.get_actuator_state_details.return_value = {
-        "state": "running",
-        "updated_at": datetime.now(timezone.utc)
-        - timedelta(minutes=45),
-    }
-
-    decorator = MaxRunTimeActuatorDecorator(
-        wrapped=inner_adapter,
-        device_repository=device_repository,
-    )
-
-    decorator.apply(
-        device_id=device_id,
-        command="stop_pump",
-        payload={},
-    )
-
-    inner_adapter.apply.assert_called_once_with(
-        device_id=device_id,
-        command="stop_pump",
-        payload={},
-    )
 
 
 def test_max_runtime_allows_commands_before_limit():

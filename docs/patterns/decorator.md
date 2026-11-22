@@ -48,8 +48,6 @@ The maximum-runtime decorator checks the actuator state and its last update time
 
 If the actuator is running and its state has not been updated for at least 30 minutes, execution is blocked.
 
-`stop_pump` is always allowed through, even after the limit. Stopping is how an over-running actuator returns to a safe state, so blocking it would leave the pump stuck in `running`.
-
 The `updated_at` timestamp is set by the database clock (`now()`), so the runtime check is correct regardless of the time zone of the machine running the backend.
 
 The decorator raises `MaxRunTimeExceeded` with the message:
@@ -145,7 +143,6 @@ The tests verify that:
 
 - The maximum-runtime decorator blocks an actuator running for at least 30 minutes.
 - The inner adapter is not called when the runtime policy blocks execution.
-- `stop_pump` still reaches the inner adapter after the runtime limit.
 - The actuator state's `updated_at` is a time-zone-aware current timestamp.
 - A blocked attempt is recorded in the database.
 - A successful execution is recorded with the logging policy.

@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from application.readings.dto import ReadingDto
 from application.readings.service import ReadingIngest
 from application.sensors.service import SensorService
+from composition import get_event_bus
+from domain.events.bus import EventBus
 from infrastructure.db import get_db
 from infrastructure.persistence.device_repository import DeviceRepository
 from infrastructure.persistence.reading_repository import ReadingRepository
@@ -60,6 +62,7 @@ def get_sensor_service(
 
 def get_reading_ingest(
     db: Session = Depends(get_db),
+    event_bus: EventBus = Depends(get_event_bus),
 ) -> ReadingIngest:
     device_repository = DeviceRepository(db)
     reading_repository = ReadingRepository(db)
@@ -67,6 +70,7 @@ def get_reading_ingest(
     return ReadingIngest(
         device_repository=device_repository,
         reading_repository=reading_repository,
+        event_bus=event_bus,
     )
 
 

@@ -9,15 +9,25 @@ from main import app
 client = TestClient(app)
 
 
-def test_actuator_state_api_and_transitions():
-    devices_response = client.get(
-        "/api/devices",
-        params={"role": "actuator"},
+def provision_devices():
+    # Each test provisions its own devices so it does not depend on
+    # existing data or on the state other tests left behind.
+    response = client.post(
+        "/api/devices/provision",
+        params={"family": "simulation"},
     )
 
-    assert devices_response.status_code == 200
+    assert response.status_code == 201
 
-    actuators = devices_response.json()
+    return response.json()
+
+
+def test_actuator_state_api_and_transitions():
+    actuators = [
+        device
+        for device in provision_devices()
+        if device["role"] == "actuator"
+    ]
 
     water_pumps = [
         device
@@ -77,14 +87,11 @@ def test_actuator_state_returns_404_for_missing_device():
 
 
 def test_actuator_state_returns_404_for_non_actuator():
-    sensors_response = client.get(
-        "/api/devices",
-        params={"role": "sensor"},
-    )
-
-    assert sensors_response.status_code == 200
-
-    sensors = sensors_response.json()
+    sensors = [
+        device
+        for device in provision_devices()
+        if device["role"] == "sensor"
+    ]
     assert len(sensors) > 0
 
     sensor_id = sensors[0]["id"]

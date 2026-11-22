@@ -7,10 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
 from application.readings.sampler import SimulationSampler
+from composition import event_bus
 from infrastructure.db import SessionLocal
 from infrastructure.persistence.device_repository import DeviceRepository
 from infrastructure.persistence.reading_repository import ReadingRepository
 from infrastructure.settings import settings
+from interfaces.api.alerts import router as alerts_router
 from interfaces.api.commands import router as commands_router
 from interfaces.api.automation import router as automation_router
 from interfaces.api.devices import (
@@ -34,6 +36,7 @@ async def run_simulation_sampler() -> None:
             sampler = SimulationSampler(
                 device_repository=device_repository,
                 reading_repository=reading_repository,
+                event_bus=event_bus,
             )
 
             sampler.sample_once()
@@ -96,6 +99,7 @@ app.include_router(commands_router)
 app.include_router(devices_router)
 app.include_router(actuator_router)
 app.include_router(overview_router)
+app.include_router(alerts_router)
 
 
 @app.get("/")

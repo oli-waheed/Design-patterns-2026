@@ -5,10 +5,10 @@ from application.commands.dto import CommandLogDto
 from domain.actuators.context import ActuatorContext
 from domain.actuators.state import ActuatorState
 from domain.commands.invoker import CommandInvoker, CommandRegistry
+from domain.devices.entity import Device
+from domain.events.bus import EventBus
+from domain.events.events import ActuatorStateChanged, CommandFailed
 from infrastructure.adapters.actuators.factory import build_actuator_port
-from infrastructure.adapters.actuators.logging_decorator import (
-    MaxRunTimeExceeded,
-)
 from infrastructure.persistence.command_log_repository import (
     CommandLogRepository,
 )
@@ -53,8 +53,10 @@ class CommandService:
         device_repository: DeviceRepository,
         execution_log_repository: ExecutionLogRepository,
         command_log_repository: CommandLogRepository,
+        event_bus: EventBus | None = None,
     ) -> None:
         self._device_repository = device_repository
+        self._event_bus = event_bus
         self._execution_log_repository = execution_log_repository
         self._command_log_repository = command_log_repository
 
@@ -146,8 +148,10 @@ class CommandService:
                 payload=command_payload,
             )
 
-        except MaxRunTimeExceeded as exc:
-            return self._save_result(
+        except Exception as exc:
+            # Includes MaxRunTimeExceeded from the Phase 9 decorator, whose
+            # message "Max run time exceeded" becomes the alert message.
+            result = self._save_result(
                 device_id=device_id,
                 command_type=command_type,
                 payload=command_payload,
@@ -155,14 +159,13 @@ class CommandService:
                 error_message=str(exc),
             )
 
-        except Exception as exc:
-            return self._save_result(
-                device_id=device_id,
+            self._publish_command_failed(
+                device=device,
                 command_type=command_type,
-                payload=command_payload,
-                status="failed",
-                error_message=str(exc),
+                message=str(exc),
             )
+
+            return result
 
         # Persist state only after successful command execution.
         if target_state is not None and context.state != ActuatorState(
@@ -170,6 +173,12 @@ class CommandService:
         ):
             self._device_repository.update_actuator_state(
                 device_id=device_id,
+                state=context.state.value,
+            )
+
+            self._publish_state_changed(
+                device=device,
+                previous_state=current_state,
                 state=context.state.value,
             )
 
@@ -193,6 +202,44 @@ class CommandService:
             CommandLogDto.model_validate(record)
             for record in records
         ]
+
+    def _publish_command_failed(
+        self,
+        device: Device,
+        command_type: str,
+        message: str,
+    ) -> None:
+        if self._event_bus is None:
+            return
+
+        self._event_bus.publish(
+            CommandFailed(
+                device_id=device.id,
+                command_type=command_type,
+                message=message,
+                location_id=device.location_id,
+                zone_id=device.zone_id,
+            )
+        )
+
+    def _publish_state_changed(
+        self,
+        device: Device,
+        previous_state: str,
+        state: str,
+    ) -> None:
+        if self._event_bus is None:
+            return
+
+        self._event_bus.publish(
+            ActuatorStateChanged(
+                device_id=device.id,
+                previous_state=ActuatorState(previous_state).value,
+                state=state,
+                location_id=device.location_id,
+                zone_id=device.zone_id,
+            )
+        )
 
     def _save_result(
         self,

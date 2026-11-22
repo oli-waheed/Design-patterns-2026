@@ -495,3 +495,62 @@ export async function getLocationOverview(
 
   return response.json()
 }
+
+/* ---------------- Alerts (Phase 11) ---------------- */
+
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+
+export type AlertStatusFilter = 'active' | 'resolved' | 'all'
+
+export type AlertDto = {
+  id: string
+  location_id: string | null
+  zone_id: string | null
+  device_id: string | null
+  severity: AlertSeverity
+  message: string
+  event_type: string
+  status: 'active' | 'resolved'
+  created_at: string
+}
+
+export type AlertQuery = {
+  status?: AlertStatusFilter
+  locationId?: string
+  zoneId?: string
+  since?: string
+  limit?: number
+}
+
+export async function getAlerts(
+  query: AlertQuery = {},
+): Promise<AlertDto[]> {
+  const params = new URLSearchParams()
+
+  params.set('status', query.status ?? 'active')
+  params.set('limit', String(query.limit ?? 50))
+
+  if (query.locationId) {
+    params.set('location_id', query.locationId)
+  }
+
+  if (query.zoneId) {
+    params.set('zone_id', query.zoneId)
+  }
+
+  if (query.since) {
+    params.set('since', query.since)
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/alerts?${params.toString()}`,
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, 'Failed to load alerts'),
+    )
+  }
+
+  return response.json()
+}

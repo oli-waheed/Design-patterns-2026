@@ -8,6 +8,8 @@ from uuid import UUID
 
 from application.commands.dto import CommandLogDto
 from application.commands.service import CommandService
+from composition import get_event_bus
+from domain.events.bus import EventBus
 from infrastructure.db import get_db
 from infrastructure.persistence.command_log_repository import (
     CommandLogRepository,
@@ -32,6 +34,7 @@ class CommandRequest(BaseModel):
 
 def get_command_service(
     db: Session = Depends(get_db),
+    event_bus: EventBus = Depends(get_event_bus),
 ) -> CommandService:
     device_repository = DeviceRepository(db)
     execution_log_repository = ExecutionLogRepository(db)
@@ -41,6 +44,7 @@ def get_command_service(
         device_repository=device_repository,
         execution_log_repository=execution_log_repository,
         command_log_repository=command_log_repository,
+        event_bus=event_bus,
     )
 
 

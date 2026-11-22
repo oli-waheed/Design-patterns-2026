@@ -269,6 +269,17 @@ class LocationRepository:
             self._db.rollback()
             raise
 
+    def get_zone(
+        self,
+        zone_id: UUID,
+    ) -> Zone | None:
+        row = self._db.get(ZoneRow, zone_id)
+
+        if row is None:
+            return None
+
+        return self._row_to_zone(row)
+
     @staticmethod
     def _row_to_zone(
         row: ZoneRow,

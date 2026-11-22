@@ -2,10 +2,10 @@
 from typing import Any
 from uuid import UUID
 
+from application.actuators.allowed_commands import allowed_commands_for
 from domain.devices.entity import Device
 from domain.devices.family_factory import get_family_factory
 from domain.actuators.context import ActuatorContext
-from domain.actuators.state import ActuatorState
 
 from infrastructure.adapters.actuators.factory import (
     build_actuator_port,
@@ -75,23 +75,6 @@ class DevicesService:
             zone_id=zone_id,
         )
 
-    def _allowed_commands(
-        self,
-        device: Device,
-        context: ActuatorContext,
-    ) -> list[str]:
-        if device.device_type == "water_pump":
-            return context.allowed_commands()
-
-        if device.device_type == "grow_light":
-            if context.state in {
-                ActuatorState.IDLE,
-                ActuatorState.RUNNING,
-            }:
-                return ["set_light_level"]
-
-        return []
-
     def get_actuator_state(self, device_id: UUID) -> dict | None:
         device = self._repository.get_device_by_id(device_id)
 
@@ -108,37 +91,7 @@ class DevicesService:
         return {
             "device_id": device_id,
             "state": context.state.value,
-            "allowed_commands": self._allowed_commands(device, context),
-        }
-
-    def transition_actuator(
-        self,
-        device_id: UUID,
-        target: ActuatorState | str,
-    ) -> dict | None:
-        device = self._repository.get_device_by_id(device_id)
-
-        if device is None or device.role != "actuator":
-            return None
-
-        current_state = self._repository.get_actuator_state(device_id)
-
-        if current_state is None:
-            return None
-
-        context = ActuatorContext(current_state)
-
-        context.transition(target)
-
-        self._repository.update_actuator_state(
-            device_id=device_id,
-            state=context.state.value,
-        )
-
-        return {
-            "device_id": device_id,
-            "state": context.state.value,
-            "allowed_commands": self._allowed_commands(device, context),
+            "allowed_commands": allowed_commands_for(device, context),
         }
 
     def execute_actuator_command(

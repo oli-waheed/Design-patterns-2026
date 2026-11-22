@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from application.readings.service import ReadingIngest
+from domain.events.bus import EventBus
 from infrastructure.persistence.device_repository import DeviceRepository
 from infrastructure.persistence.reading_repository import ReadingRepository
 
@@ -10,12 +11,14 @@ class SimulationSampler:
         self,
         device_repository: DeviceRepository,
         reading_repository: ReadingRepository,
+        event_bus: EventBus | None = None,
     ) -> None:
         self._device_repository = device_repository
         self._reading_repository = reading_repository
         self._ingest = ReadingIngest(
             device_repository=device_repository,
             reading_repository=reading_repository,
+            event_bus=event_bus,
         )
 
     def sample_once(
