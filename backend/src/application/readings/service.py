@@ -23,16 +23,7 @@ class ReadingIngest:
         mqtt_payload: dict | None = None,
     ) -> ReadingDto:
 
-        devices = self._device_repository.list_devices()
-
-        device = next(
-            (
-                item
-                for item in devices
-                if item.id == device_id
-            ),
-            None,
-        )
+        device = self._device_repository.get_device_by_id(device_id)
 
         if device is None:
             raise ValueError("Device not found.")
@@ -43,13 +34,8 @@ class ReadingIngest:
             mqtt_payload=mqtt_payload,
         )
 
-        if device.default_config.get("protocol", "simulation") == "mqtt":
-            if device.id is None:
-                raise ValueError("Device has no id.")
-
-            reading = adapter.read(device.id)
-        else:
-            reading = adapter.read(device)
+        # Every adapter implements SensorPort, so no protocol checks here.
+        reading = adapter.read(device)
 
         saved_reading = self._reading_repository.save(reading)
 

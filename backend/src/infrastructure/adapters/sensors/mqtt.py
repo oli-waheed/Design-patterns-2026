@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
-from uuid import UUID
 
+from domain.devices.entity import Device
+from domain.sensors.ports import SensorPort
 from domain.sensors.reading import Reading
 
 
-class MqttSensorAdapter:
+class MqttSensorAdapter(SensorPort):
     """Translate an MQTT-style payload into a normalized Reading.
 
     Phase 5 only translates the payload.
@@ -14,7 +15,10 @@ class MqttSensorAdapter:
     def __init__(self, payload: dict):
         self._payload = payload
 
-    def read(self, device_id: UUID) -> Reading:
+    def read(self, device: Device) -> Reading:
+        if device.id is None:
+            raise ValueError("Cannot read a device without an id.")
+
         try:
             value = self._payload["value"]
             unit = self._payload["unit"]
@@ -34,7 +38,7 @@ class MqttSensorAdapter:
             )
 
         return Reading(
-            device_id=device_id,
+            device_id=device.id,
             value=float(value),
             unit=str(unit),
             source="mqtt",

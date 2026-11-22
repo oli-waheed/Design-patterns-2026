@@ -32,11 +32,6 @@ class SensorAdapterSelector:
                     "MQTT payload is required for an MQTT sensor."
                 )
 
-            if device.id is None:
-                raise ValueError(
-                    "Cannot create MQTT adapter without a device id."
-                )
-
             return MqttSensorAdapter(mqtt_payload)
 
         if protocol == "vendor_stub":

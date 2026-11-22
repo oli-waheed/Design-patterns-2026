@@ -25,7 +25,21 @@ class VendorSensorAdapter(SensorPort):
                 f"Missing vendor field: {exc.args[0]}"
             ) from exc
 
-        device_id = UUID(str(raw_device_id))
+        try:
+            payload_device_id = UUID(str(raw_device_id))
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid vendor sensorId: {raw_device_id}"
+            ) from exc
+
+        # The reading belongs to the device being read. A payload for a
+        # different sensor is rejected instead of being stored under
+        # the wrong device.
+        if payload_device_id != device.id:
+            raise ValueError(
+                f"Vendor sensorId {payload_device_id} does not match "
+                f"device {device.id}."
+            )
 
         raw_time = self._vendor_payload.get("time")
 
@@ -41,7 +55,7 @@ class VendorSensorAdapter(SensorPort):
             )
 
         return Reading(
-            device_id=device_id,
+            device_id=device.id,
             value=float(raw_value),
             unit=str(raw_unit),
             source="vendor",
