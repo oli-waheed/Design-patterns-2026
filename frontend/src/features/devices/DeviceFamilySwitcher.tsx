@@ -14,12 +14,12 @@ export default function DeviceFamilySwitcher({
   devices,
 }: DeviceFamilySwitcherProps) {
   return (
-    <div className="rounded-lg border bg-gray-50 p-4">
+    <div className="panel-muted p-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h4 className="font-semibold">Device family</h4>
 
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-slate-500">
             Choose which device family to manage.
           </p>
         </div>
@@ -30,8 +30,8 @@ export default function DeviceFamilySwitcher({
             onClick={() => onFamilyChange('simulation')}
             className={`rounded-md px-4 py-2 text-sm font-medium ${
               family === 'simulation'
-                ? 'bg-gray-900 text-white'
-                : 'border bg-white text-gray-700'
+                ? 'bg-slate-900 text-white'
+                : 'border bg-white text-slate-700'
             }`}
           >
             Simulation
@@ -42,8 +42,8 @@ export default function DeviceFamilySwitcher({
             onClick={() => onFamilyChange('edge')}
             className={`rounded-md px-4 py-2 text-sm font-medium ${
               family === 'edge'
-                ? 'bg-gray-900 text-white'
-                : 'border bg-white text-gray-700'
+                ? 'bg-slate-900 text-white'
+                : 'border bg-white text-slate-700'
             }`}
           >
             Edge
@@ -51,7 +51,7 @@ export default function DeviceFamilySwitcher({
         </div>
       </div>
 
-      <p className="mt-4 text-sm text-gray-600">
+      <p className="mt-4 text-sm text-slate-600">
         {devices.length} device
         {devices.length === 1 ? '' : 's'} currently displayed.
       </p>

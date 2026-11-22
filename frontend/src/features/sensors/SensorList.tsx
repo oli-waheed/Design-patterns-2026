@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
+import EmptyState from '../../components/ui/EmptyState'
+import { SkeletonList } from '../../components/ui/Skeleton'
+import Sparkline from '../../components/ui/Sparkline'
+import { useRealtimeEvents, useRealtimeStatus } from '../../hooks/useRealtime'
 import {
   createSensor,
   getDevices,
@@ -8,13 +12,19 @@ import {
   readSensorNow,
   updateDeviceSampling,
 } from '../../services/api'
-
 import type { DeviceDto, ReadingDto } from '../../services/api'
-import { useRealtimeEvents, useRealtimeStatus } from '../../hooks/useRealtime'
 import type { ReadingCreatedPayload } from '../../services/realtime'
 
 // Phase 5 readings poll. Phase 12: only used while the WebSocket is down.
 const READINGS_POLL_MS = 5000
+
+// Readings kept per card for the sparkline.
+const TREND_POINTS = 20
+
+type SamplingState = {
+  sampling_interval_seconds: number
+  tracking_enabled: boolean
+}
 
 function formatTime(value: string): string {
   const date = new Date(value)
@@ -25,55 +35,98 @@ function formatTime(value: string): string {
 }
 
 function formatValue(reading: ReadingDto): string {
-  const digits = reading.unit === 'vwc' ? 3 : 1
+  const digits = reading.unit === 'vwc' ? 3 : 0
 
   return `${reading.value.toFixed(digits)} ${reading.unit}`
 }
 
-type SamplingState = {
-  sampling_interval_seconds: number
-  tracking_enabled: boolean
+/** Merge readings into one device's history: unique, oldest first, capped. */
+function mergeHistory(
+  current: ReadingDto[],
+  incoming: ReadingDto[],
+): ReadingDto[] {
+  const byTime = new Map<string, ReadingDto>()
+
+  for (const reading of [...current, ...incoming]) {
+    byTime.set(reading.recorded_at, reading)
+  }
+
+  return [...byTime.values()]
+    .sort(
+      (a, b) =>
+        new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime(),
+    )
+    .slice(-TREND_POINTS)
 }
 
 export default function SensorList() {
   const [sensors, setSensors] = useState<DeviceDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const [sensorType, setSensorType] =
     useState<'moisture' | 'light'>('moisture')
-
   const [displayName, setDisplayName] = useState('')
   const [creating, setCreating] = useState(false)
 
-  const [sampling, setSampling] = useState<
-    Record<string, SamplingState>
-  >({})
-
+  const [sampling, setSampling] = useState<Record<string, SamplingState>>({})
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
 
-  const [latest, setLatest] = useState<Record<string, ReadingDto>>({})
+  // Recent readings per device, oldest first (last one = latest value).
+  const [history, setHistory] = useState<Record<string, ReadingDto[]>>({})
   const [reading, setReading] = useState<string | null>(null)
 
   const realtimeStatus = useRealtimeStatus()
   const live = realtimeStatus === 'connected'
 
-  function applyReading(next: ReadingDto) {
-    setLatest((current) => {
-      const previous = current[next.device_id]
-
-      // Ignore frames older than what the card already shows.
-      if (
-        previous &&
-        new Date(previous.recorded_at) > new Date(next.recorded_at)
-      ) {
-        return current
-      }
-
-      return { ...current, [next.device_id]: next }
-    })
+  function addReadings(deviceId: string, readings: ReadingDto[]) {
+    setHistory((current) => ({
+      ...current,
+      [deviceId]: mergeHistory(current[deviceId] ?? [], readings),
+    }))
   }
+
+  // Load sensors (again after creating one).
+  useEffect(() => {
+    let cancelled = false
+
+    getDevices(undefined, 'sensor')
+      .then((data) => {
+        if (cancelled) {
+          return
+        }
+
+        setSensors(data)
+        setSampling(
+          Object.fromEntries(
+            data.map((sensor) => [
+              sensor.id,
+              {
+                sampling_interval_seconds: sensor.sampling_interval_seconds,
+                tracking_enabled: sensor.tracking_enabled,
+              },
+            ]),
+          ),
+        )
+        setError(null)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load sensors')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [reloadKey])
 
   // Live updates: apply reading.created frames in place.
   useRealtimeEvents((event) => {
@@ -83,20 +136,22 @@ export default function SensorList() {
 
     const payload = event.payload as ReadingCreatedPayload
 
-    applyReading({
-      device_id: payload.device_id,
-      value: payload.value,
-      unit: payload.unit,
-      source: payload.source,
-      recorded_at: payload.recorded_at,
-    })
+    addReadings(payload.device_id, [
+      {
+        device_id: payload.device_id,
+        value: payload.value,
+        unit: payload.unit,
+        source: payload.source,
+        recorded_at: payload.recorded_at,
+      },
+    ])
   })
 
   const sensorIds = sensors.map((sensor) => sensor.id).join(',')
 
-  // Load the latest stored reading for every card. While the socket is
-  // connected this runs once; while it is down it repeats every 5 s
-  // (the Phase 5 poll as fallback).
+  // Recent stored readings for every card. While the socket is connected
+  // this runs once; while it is down it repeats every 5 s (Phase 5 poll as
+  // the documented fallback).
   useEffect(() => {
     const ids = sensorIds ? sensorIds.split(',') : []
 
@@ -106,27 +161,21 @@ export default function SensorList() {
 
     let cancelled = false
 
-    async function loadLatest() {
+    async function loadRecent() {
       const results = await Promise.all(
         ids.map((id) =>
-          getSensorReadings(id, 1)
-            .then((rows) => rows[0] ?? null)
-            .catch(() => null),
+          getSensorReadings(id, TREND_POINTS)
+            .then((rows) => [id, rows] as const)
+            .catch(() => [id, [] as ReadingDto[]] as const),
         ),
       )
 
-      if (cancelled) {
-        return
+      if (!cancelled) {
+        results.forEach(([id, rows]) => addReadings(id, rows))
       }
-
-      results.forEach((row) => {
-        if (row) {
-          applyReading(row)
-        }
-      })
     }
 
-    void loadLatest()
+    void loadRecent()
 
     if (live) {
       return () => {
@@ -134,7 +183,7 @@ export default function SensorList() {
       }
     }
 
-    const intervalId = window.setInterval(loadLatest, READINGS_POLL_MS)
+    const intervalId = window.setInterval(loadRecent, READINGS_POLL_MS)
 
     return () => {
       cancelled = true
@@ -148,61 +197,15 @@ export default function SensorList() {
       setError(null)
 
       const result = await readSensorNow(sensorId)
-      applyReading(result)
+      addReadings(sensorId, [result])
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to read sensor',
-      )
+      setError(err instanceof Error ? err.message : 'Failed to read sensor')
     } finally {
       setReading(null)
     }
   }
 
-  async function loadSensors() {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const data = await getDevices(
-        undefined,
-        'sensor',
-      )
-
-      setSensors(data)
-
-      const initialSampling: Record<
-        string,
-        SamplingState
-      > = {}
-
-      for (const sensor of data) {
-        initialSampling[sensor.id] = {
-          sampling_interval_seconds:
-            sensor.sampling_interval_seconds,
-          tracking_enabled:
-            sensor.tracking_enabled,
-        }
-      }
-
-      setSampling(initialSampling)
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to load sensors',
-      )
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadSensors()
-  }, [])
-
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     try {
@@ -211,19 +214,13 @@ export default function SensorList() {
 
       await createSensor({
         type: sensorType,
-        display_name:
-          displayName.trim() || undefined,
+        display_name: displayName.trim() || undefined,
       })
 
       setDisplayName('')
-
-      await loadSensors()
+      setReloadKey((current) => current + 1)
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to create sensor',
-      )
+      setError(err instanceof Error ? err.message : 'Failed to create sensor')
     } finally {
       setCreating(false)
     }
@@ -231,9 +228,7 @@ export default function SensorList() {
 
   function updateSamplingValue(
     sensorId: string,
-    field:
-      | 'sampling_interval_seconds'
-      | 'tracking_enabled',
+    field: keyof SamplingState,
     value: number | boolean,
   ) {
     setSampling((current) => ({
@@ -247,9 +242,7 @@ export default function SensorList() {
     setSaved(null)
   }
 
-  async function handleSaveSampling(
-    sensorId: string,
-  ) {
+  async function handleSaveSampling(sensorId: string) {
     const settings = sampling[sensorId]
 
     if (!settings) {
@@ -261,32 +254,27 @@ export default function SensorList() {
       setError(null)
       setSaved(null)
 
-      const result = await updateDeviceSampling(
-        sensorId,
-        {
-          sampling_interval_seconds:
-            settings.sampling_interval_seconds,
-          tracking_enabled:
-            settings.tracking_enabled,
-        },
-      )
+      const result = await updateDeviceSampling(sensorId, settings)
 
       setSampling((current) => ({
         ...current,
         [sensorId]: {
-          sampling_interval_seconds:
-            result.sampling_interval_seconds,
-          tracking_enabled:
-            result.tracking_enabled,
+          sampling_interval_seconds: result.sampling_interval_seconds,
+          tracking_enabled: result.tracking_enabled,
         },
       }))
+      setSensors((current) =>
+        current.map((sensor) =>
+          sensor.id === sensorId
+            ? { ...sensor, tracking_enabled: result.tracking_enabled }
+            : sensor,
+        ),
+      )
 
       setSaved(sensorId)
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to save sampling settings',
+        err instanceof Error ? err.message : 'Failed to save sampling settings',
       )
     } finally {
       setSaving(null)
@@ -297,105 +285,70 @@ export default function SensorList() {
     <div className="mt-6 space-y-6">
       <form
         onSubmit={handleSubmit}
-        className="rounded-lg border bg-gray-50 p-4"
+        className="panel-muted flex flex-col gap-3 p-4 sm:flex-row sm:items-end"
       >
-        <h4 className="font-semibold">
-          Add sensor
-        </h4>
+        <label className="text-sm sm:w-40">
+          <span className="field-label">Sensor type</span>
+          <select
+            value={sensorType}
+            onChange={(event) =>
+              setSensorType(event.target.value as 'moisture' | 'light')
+            }
+            className="field w-full"
+          >
+            <option value="moisture">Moisture</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="font-medium">
-              Sensor type
-            </span>
+        <label className="flex-1 text-sm">
+          <span className="field-label">Display name</span>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            placeholder="Optional"
+            className="field w-full"
+          />
+        </label>
 
-            <select
-              value={sensorType}
-              onChange={(event) =>
-                setSensorType(
-                  event.target.value as
-                    | 'moisture'
-                    | 'light',
-                )
-              }
-              className="mt-1 block w-full rounded-md border px-3 py-2"
-            >
-              <option value="moisture">
-                Moisture
-              </option>
-
-              <option value="light">
-                Light
-              </option>
-            </select>
-          </label>
-
-          <label className="text-sm">
-            <span className="font-medium">
-              Display name
-            </span>
-
-            <input
-              type="text"
-              value={displayName}
-              onChange={(event) =>
-                setDisplayName(event.target.value)
-              }
-              placeholder="Optional"
-              className="mt-1 block w-full rounded-md border px-3 py-2"
-            />
-          </label>
-        </div>
-
-        <button
-          type="submit"
-          disabled={creating}
-          className="mt-4 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {creating
-            ? 'Creating...'
-            : 'Create sensor'}
+        <button type="submit" disabled={creating} className="btn btn-primary">
+          {creating ? 'Creating…' : 'Add sensor'}
         </button>
       </form>
 
-      {loading && (
-        <p className="text-sm text-gray-500">
-          Loading sensors...
-        </p>
-      )}
+      {error && <p className="alert-error">{error}</p>}
 
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
-      {!loading &&
-        !error &&
-        sensors.length === 0 && (
-          <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-500">
-            No sensors found.
-          </p>
-        )}
-
-      {!loading && sensors.length > 0 && (
-        <div className="space-y-3">
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <SkeletonList rows={1} label="Loading sensors…" rowClassName="h-56" />
+          <SkeletonList rows={1} label="Loading sensors…" rowClassName="h-56" />
+          <SkeletonList rows={1} label="Loading sensors…" rowClassName="h-56" />
+        </div>
+      ) : sensors.length === 0 ? (
+        <EmptyState title="No sensors yet">
+          Add a sensor above, or provision a device family under Devices.
+        </EmptyState>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {sensors.map((sensor) => {
             const settings = sampling[sensor.id]
+            const readings = history[sensor.id] ?? []
+            const latest = readings[readings.length - 1]
 
             return (
               <article
                 key={sensor.id}
-                className="rounded-lg border bg-white p-4"
+                className="panel flex min-w-0 flex-col p-4"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h4 className="font-semibold">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h4 className="subsection-title truncate">
                       {sensor.display_name}
                     </h4>
-
-                    <p className="mt-1 text-sm text-gray-500">
-                      Type: {sensor.device_type}
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {sensor.device_type.replace('_', ' ')} ·{' '}
+                      {String(sensor.default_config.protocol ?? 'simulation')}
                     </p>
                   </div>
 
@@ -403,78 +356,71 @@ export default function SensorList() {
                     type="button"
                     onClick={() => handleReadNow(sensor.id)}
                     disabled={reading === sensor.id}
-                    className="shrink-0 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                    className="btn btn-secondary btn-sm shrink-0"
                   >
-                    {reading === sensor.id ? 'Reading...' : 'Read now'}
+                    {reading === sensor.id ? 'Reading…' : 'Read now'}
                   </button>
                 </div>
 
                 <div
-                  className="mt-4 flex items-baseline justify-between gap-4 rounded-lg border bg-gray-50 px-4 py-3"
+                  className="panel-muted mt-4 px-4 py-3"
                   data-testid={`latest-reading-${sensor.id}`}
                 >
-                  {latest[sensor.id] ? (
-                    <>
-                      <p className="text-2xl font-semibold tabular-nums">
-                        {formatValue(latest[sensor.id])}
-                      </p>
+                  {latest ? (
+                    <div className="flex items-end justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-2xl font-semibold tabular-nums text-slate-900">
+                          {formatValue(latest)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {formatTime(latest.recorded_at)} · {latest.source}
+                        </p>
+                      </div>
 
-                      <p className="text-right text-xs text-gray-500">
-                        {formatTime(latest[sensor.id].recorded_at)}
-                        {' · '}
-                        {latest[sensor.id].source}
-                        <br />
-                        {live
-                          ? 'Live'
-                          : sensor.tracking_enabled
-                            ? 'Polling every 5 s'
-                            : 'Tracking off'}
-                      </p>
-                    </>
+                      <Sparkline
+                        values={readings.map((item) => item.value)}
+                        label={`Last ${readings.length} readings of ${sensor.display_name}`}
+                      />
+                    </div>
                   ) : (
-                    <p className="text-sm text-gray-500">
-                      No readings yet.
-                    </p>
+                    <p className="text-sm text-slate-500">No readings yet.</p>
                   )}
+
+                  <p className="mt-2 text-xs">
+                    {!sensor.tracking_enabled ? (
+                      <span className="badge badge-neutral">Tracking off</span>
+                    ) : live ? (
+                      <span className="badge badge-ok">Live</span>
+                    ) : (
+                      <span className="badge badge-warn">Polling every 5 s</span>
+                    )}
+                  </p>
                 </div>
 
                 {settings && (
-                  <div className="mt-4 rounded-lg bg-gray-50 p-4">
-                    <h5 className="text-lg font-semibold">
-                      Sampling settings
-                    </h5>
-
-                    <div className="mt-4 flex flex-wrap items-end gap-6">
+                  <div className="mt-4 space-y-3">
+                    <div className="flex flex-wrap items-end gap-4">
                       <label className="text-sm">
-                        <span className="block font-medium">
-                          Interval (seconds)
-                        </span>
-
+                        <span className="field-label">Interval (s)</span>
                         <input
                           type="number"
                           min="5"
-                          value={
-                            settings.sampling_interval_seconds
-                          }
+                          value={settings.sampling_interval_seconds}
                           onChange={(event) =>
                             updateSamplingValue(
                               sensor.id,
                               'sampling_interval_seconds',
-                              Number(
-                                event.target.value,
-                              ),
+                              Number(event.target.value),
                             )
                           }
-                          className="mt-1 block w-48 rounded-md border px-3 py-2"
+                          className="field w-28"
                         />
                       </label>
 
-                      <label className="flex items-center gap-2 text-sm font-medium">
+                      <label className="flex items-center gap-2 pb-2 text-sm font-medium text-slate-700">
                         <input
                           type="checkbox"
-                          checked={
-                            settings.tracking_enabled
-                          }
+                          checked={settings.tracking_enabled}
                           onChange={(event) =>
                             updateSamplingValue(
                               sensor.id,
@@ -482,47 +428,37 @@ export default function SensorList() {
                               event.target.checked,
                             )
                           }
-                          className="h-5 w-5"
+                          className="h-4 w-4 rounded border-slate-300"
                         />
-
-                        <span>
-                          Tracking enabled
-                        </span>
+                        Tracking
                       </label>
                     </div>
 
-                    <button
-                      type="button"
-                      disabled={
-                        saving === sensor.id
-                      }
-                      onClick={() =>
-                        handleSaveSampling(
-                          sensor.id,
-                        )
-                      }
-                      className="mt-4 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                    >
-                      {saving === sensor.id
-                        ? 'Saving...'
-                        : 'Save sampling settings'}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={saving === sensor.id}
+                        onClick={() => handleSaveSampling(sensor.id)}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        {saving === sensor.id ? 'Saving…' : 'Save sampling'}
+                      </button>
 
-                    {saved === sensor.id && (
-                      <p className="mt-2 text-sm text-green-600">
-                        Sampling settings saved.
-                      </p>
-                    )}
+                      {saved === sensor.id && (
+                        <span className="text-sm text-ok-ink">Saved.</span>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                <pre className="mt-4 overflow-x-auto rounded-md bg-gray-50 p-3 text-xs text-gray-700">
-                  {JSON.stringify(
-                    sensor.default_config,
-                    null,
-                    2,
-                  )}
-                </pre>
+                <details className="mt-4 text-xs text-slate-500">
+                  <summary className="cursor-pointer select-none hover:text-slate-700">
+                    Device configuration
+                  </summary>
+                  <pre className="panel-muted mt-2 overflow-x-auto p-3 text-slate-700">
+                    {JSON.stringify(sensor.default_config, null, 2)}
+                  </pre>
+                </details>
               </article>
             )
           })}

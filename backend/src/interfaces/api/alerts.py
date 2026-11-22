@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from application.alerts.dto import AlertDto
+from application.alerts.dto import AlertDto, AlertStatusUpdateDto
 from application.alerts.service import AlertQueryService
 from infrastructure.db import get_db
 from infrastructure.persistence.alert_repository import AlertRepository
@@ -56,3 +56,26 @@ def list_alerts(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+
+
+@router.patch(
+    "/{alert_id}",
+    response_model=AlertDto,
+    summary="Resolve (or reopen) an alert",
+)
+def update_alert_status(
+    alert_id: UUID,
+    request: AlertStatusUpdateDto,
+    service: AlertQueryService = Depends(get_alert_query_service),
+) -> AlertDto:
+    """Body {"status": "resolved"}. Resolving also sets acknowledged_at."""
+
+    alert = service.update_status(alert_id, request.status)
+
+    if alert is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alert not found.",
+        )
+
+    return alert

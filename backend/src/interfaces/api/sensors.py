@@ -1,6 +1,7 @@
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -163,32 +164,42 @@ def read_sensor(
 @router.get(
     "/{sensor_id}/readings",
     response_model=list[ReadingResponse],
+    summary="List readings: latest N, or a time range for charts",
 )
 def list_readings(
     sensor_id: UUID,
-    limit: int = 10,
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        le=10000,
+        description="Latest mode default 10; range mode default 2000.",
+    ),
+    from_: datetime | None = Query(
+        default=None,
+        alias="from",
+        description="ISO-8601 start (inclusive). Enables range mode.",
+    ),
+    to: datetime | None = Query(
+        default=None,
+        description="ISO-8601 end (inclusive). Enables range mode.",
+    ),
     db: Session = Depends(get_db),
 ) -> list[ReadingResponse]:
+    """Two modes on one path.
 
-    if limit < 1:
+    - Without ``from``/``to``: the latest ``limit`` readings, newest first
+      (Phase 5 sensor cards).
+    - With ``from`` and/or ``to``: readings in that window, **oldest first**
+      (Phase 13 history chart).
+    """
+
+    if from_ is not None and to is not None and from_ > to:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Limit must be at least 1.",
+            detail="'from' must be before 'to'.",
         )
 
-    device_repository = DeviceRepository(db)
-    devices = device_repository.list_devices()
-
-    device = next(
-        (
-            item
-            for item in devices
-            if item.id == sensor_id
-        ),
-        None,
-    )
-
-    if device is None:
+    if DeviceRepository(db).get_device_by_id(sensor_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Device not found.",
@@ -196,10 +207,18 @@ def list_readings(
 
     reading_repository = ReadingRepository(db)
 
-    readings = reading_repository.list_recent(
-        device_id=sensor_id,
-        limit=limit,
-    )
+    if from_ is not None or to is not None:
+        readings = reading_repository.list_range(
+            device_id=sensor_id,
+            start=from_,
+            end=to,
+            limit=limit or 2000,
+        )
+    else:
+        readings = reading_repository.list_recent(
+            device_id=sensor_id,
+            limit=limit or 10,
+        )
 
     return [
         ReadingResponse(

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 
 import {
+  getRealtimeInfo,
   getRealtimeStatus,
+  subscribeRealtimeInfo,
   subscribeRealtime,
   subscribeRealtimeStatus,
   type RealtimeEvent,
+  type RealtimeInfo,
   type RealtimeStatus,
 } from '../services/realtime'
 
@@ -14,6 +17,15 @@ export function useRealtimeStatus(): RealtimeStatus {
     subscribeRealtimeStatus,
     getRealtimeStatus,
     getRealtimeStatus,
+  )
+}
+
+/** Status plus reconnect attempt and next retry time (header badge). */
+export function useRealtimeInfo(): RealtimeInfo {
+  return useSyncExternalStore(
+    subscribeRealtimeInfo,
+    getRealtimeInfo,
+    getRealtimeInfo,
   )
 }
 

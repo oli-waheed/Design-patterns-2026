@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 
+import EmptyState from '../../components/ui/EmptyState'
+import { SkeletonList } from '../../components/ui/Skeleton'
+import { useRealtimeEvents } from '../../hooks/useRealtime'
+
 import {
   getActuatorExecutions,
 } from '../../services/actuatorApi'
@@ -41,9 +45,47 @@ export default function ExecutionLog() {
     }
   }
 
+  // Initial load: state is set only after the request finishes.
   useEffect(() => {
-    loadExecutions()
+    let cancelled = false
+
+    getActuatorExecutions(20)
+      .then((data) => {
+        if (!cancelled) {
+          setExecutions(data)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Failed to load actuator execution history',
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
+
+  // Live: a state change or a failed command means a new execution row.
+  useRealtimeEvents((event) => {
+    if (
+      event.type === 'actuator.state_changed' ||
+      (event.type === 'alert.created' &&
+        (event.payload as { event_type?: string }).event_type ===
+          'command.failed')
+    ) {
+      void loadExecutions(true)
+    }
+  })
 
   function formatDate(value: string): string {
     const date = new Date(value)
@@ -56,14 +98,14 @@ export default function ExecutionLog() {
   }
 
   return (
-    <div className="mt-6 space-y-4">
+    <div className="mt-8 space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h4 className="font-semibold">
             Recent actuator executions
           </h4>
 
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-slate-500">
             The latest 20 actuator command attempts and applied policies.
           </p>
         </div>
@@ -72,28 +114,24 @@ export default function ExecutionLog() {
           type="button"
           onClick={() => loadExecutions(true)}
           disabled={loading || refreshing}
-          className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+          className="btn btn-secondary"
         >
           {refreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
 
       {loading && (
-        <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
-          Loading execution history...
-        </p>
+        <SkeletonList rows={3} label="Loading execution history…" rowClassName="h-10" />
       )}
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-sm text-red-700">
-            {error}
-          </p>
+        <div className="alert-error">
+          <p>{error}</p>
 
           <button
             type="button"
             onClick={() => loadExecutions(true)}
-            className="mt-2 text-sm font-medium text-red-700 underline"
+            className="mt-2 font-medium underline"
           >
             Try again
           </button>
@@ -101,74 +139,66 @@ export default function ExecutionLog() {
       )}
 
       {!loading && !error && executions.length === 0 && (
-        <div className="rounded-lg border border-dashed bg-gray-50 p-6 text-center">
-          <p className="font-medium text-gray-700">
-            No actuator executions yet.
-          </p>
-
-          <p className="mt-2 text-sm text-gray-500">
-            Actuator command attempts will appear here after they are executed.
-          </p>
-        </div>
+        <EmptyState title="No actuator executions yet">
+          Actuator command attempts appear here after they run.
+        </EmptyState>
       )}
 
       {!loading && executions.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
+        <div className="panel overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                <th className="px-4 py-3 text-left font-semibold text-slate-700">
                   Time
                 </th>
 
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                <th className="px-4 py-3 text-left font-semibold text-slate-700">
                   Device
                 </th>
 
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                <th className="px-4 py-3 text-left font-semibold text-slate-700">
                   Result
                 </th>
 
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                <th className="px-4 py-3 text-left font-semibold text-slate-700">
                   Policies
                 </th>
 
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                <th className="px-4 py-3 text-left font-semibold text-slate-700">
                   Message
                 </th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className="divide-y divide-slate-200 bg-white">
               {executions.map((execution) => (
                 <tr key={execution.id}>
-                  <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                     {formatDate(execution.created_at)}
                   </td>
 
-                  <td className="px-4 py-3 font-medium text-gray-800">
+                  <td className="px-4 py-3 font-medium text-slate-800">
                     {execution.device_name}
                   </td>
 
                   <td className="px-4 py-3">
                     <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        execution.success
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
+                      className={`badge ${
+                        execution.success ? 'badge-ok' : 'badge-error'
                       }`}
                     >
                       {execution.success ? 'Success' : 'Failed'}
                     </span>
                   </td>
 
-                  <td className="px-4 py-3 text-gray-600">
+                  <td className="px-4 py-3 text-slate-600">
                     {execution.policy_applied.length > 0
                       ? execution.policy_applied.join(', ')
                       : 'None'}
                   </td>
 
-                  <td className="px-4 py-3 text-gray-600">
+                  <td className="px-4 py-3 text-slate-600">
                     {execution.message || '—'}
                   </td>
                 </tr>

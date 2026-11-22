@@ -7,6 +7,7 @@ import {
   deleteZone,
   getLocation,
   getLocations,
+  renameLocation,
   updateZone,
   type LocationResponseDto,
   type LocationSummaryDto,
@@ -125,6 +126,51 @@ export default function LocationManager() {
         err instanceof Error
           ? err.message
           : 'Failed to create location',
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const [renaming, setRenaming] = useState(false)
+  const [newName, setNewName] = useState('')
+
+  function startRename() {
+    if (!selectedLocation) {
+      return
+    }
+
+    setNewName(selectedLocation.location.name)
+    setRenaming(true)
+  }
+
+  async function handleRename() {
+    if (!selectedLocation || !newName.trim()) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError('')
+
+      const updated = await renameLocation(
+        selectedLocation.location.id,
+        newName.trim(),
+      )
+
+      setSelectedLocation({
+        ...selectedLocation,
+        location: updated,
+      })
+      setLocations((current) =>
+        current.map((location) =>
+          location.id === updated.id ? updated : location,
+        ),
+      )
+      setRenaming(false)
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to rename location',
       )
     } finally {
       setLoading(false)
@@ -363,19 +409,19 @@ export default function LocationManager() {
           Location Management
         </h2>
 
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-slate-500">
           Create locations and manage their zones.
         </p>
       </div>
 
       {error && (
-        <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+        <div className="alert-error">
           {error}
         </div>
       )}
 
       {/* Create location */}
-      <div className="rounded-lg border p-4">
+      <div className="panel p-4">
         <h3 className="mb-3 font-medium">
           Create Location
         </h3>
@@ -387,14 +433,14 @@ export default function LocationManager() {
               setLocationName(event.target.value)
             }
             placeholder="Location name"
-            className="flex-1 rounded border px-3 py-2"
+            className="field flex-1"
           />
 
           <button
             type="button"
             onClick={handleCreateLocation}
             disabled={loading}
-            className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+            className="btn btn-primary"
           >
             Create
           </button>
@@ -402,13 +448,13 @@ export default function LocationManager() {
       </div>
 
       {/* Location list */}
-      <div className="rounded-lg border p-4">
+      <div className="panel p-4">
         <h3 className="mb-3 font-medium">
           Locations
         </h3>
 
         {locations.length === 0 ? (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-slate-500">
             No locations yet.
           </p>
         ) : (
@@ -436,30 +482,78 @@ export default function LocationManager() {
 
       {/* Selected location */}
       {selectedLocation && (
-        <div className="space-y-6 rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold">
-                {selectedLocation.location.name}
-              </h3>
+        <div className="panel space-y-6 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            {renaming ? (
+              <form
+                className="flex flex-1 flex-wrap items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void handleRename()
+                }}
+              >
+                <label htmlFor="rename-location" className="sr-only">
+                  Location name
+                </label>
+                <input
+                  id="rename-location"
+                  value={newName}
+                  onChange={(event) => setNewName(event.target.value)}
+                  maxLength={128}
+                  className="field min-w-0 flex-1"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !newName.trim()}
+                  className="btn btn-primary btn-sm"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRenaming(false)}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Cancel
+                </button>
+              </form>
+            ) : (
+              <div className="min-w-0">
+                <h3 className="section-title truncate">
+                  {selectedLocation.location.name}
+                </h3>
 
-              <p className="text-xs text-gray-500">
-                ID: {selectedLocation.location.id}
-              </p>
-            </div>
+                <p className="truncate text-xs text-slate-500">
+                  ID: {selectedLocation.location.id}
+                </p>
+              </div>
+            )}
 
-            <button
-              type="button"
-              onClick={handleDeleteLocation}
-              disabled={loading}
-              className="rounded border border-red-300 px-3 py-2 text-red-600 disabled:opacity-50"
-            >
-              Delete Location
-            </button>
+            {!renaming && (
+              <div className="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  onClick={startRename}
+                  disabled={loading}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteLocation}
+                  disabled={loading}
+                  className="btn btn-danger btn-sm"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Add zone */}
-          <div className="rounded border p-4">
+          <div className="panel p-4">
             <h4 className="mb-3 font-medium">
               Add Zone
             </h4>
@@ -474,7 +568,7 @@ export default function LocationManager() {
                   })
                 }
                 placeholder="Zone name"
-                className="rounded border px-3 py-2"
+                className="field"
               />
 
               <input
@@ -493,7 +587,7 @@ export default function LocationManager() {
                   })
                 }
                 placeholder="Low threshold"
-                className="rounded border px-3 py-2"
+                className="field"
               />
 
               <input
@@ -512,7 +606,7 @@ export default function LocationManager() {
                   })
                 }
                 placeholder="High threshold"
-                className="rounded border px-3 py-2"
+                className="field"
               />
             </div>
 
@@ -520,7 +614,7 @@ export default function LocationManager() {
               type="button"
               onClick={handleAddZone}
               disabled={loading}
-              className="mt-3 rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+              className="btn btn-primary mt-3"
             >
               Add Zone
             </button>
@@ -537,7 +631,7 @@ export default function LocationManager() {
                 (zone) => (
                   <div
                     key={zone.id}
-                    className="rounded border p-4"
+                    className="panel p-4"
                   >
                     {editingZoneId === zone.id ? (
                       <div className="space-y-3">
@@ -549,7 +643,7 @@ export default function LocationManager() {
                               name: event.target.value,
                             })
                           }
-                          className="w-full rounded border px-3 py-2"
+                          className="field w-full"
                         />
 
                         <div className="grid gap-3 md:grid-cols-2">
@@ -568,7 +662,7 @@ export default function LocationManager() {
                                   event.target.value,
                               })
                             }
-                            className="rounded border px-3 py-2"
+                            className="field"
                           />
 
                           <input
@@ -586,7 +680,7 @@ export default function LocationManager() {
                                   event.target.value,
                               })
                             }
-                            className="rounded border px-3 py-2"
+                            className="field"
                           />
                         </div>
 
@@ -597,7 +691,7 @@ export default function LocationManager() {
                               handleUpdateZone
                             }
                             disabled={loading}
-                            className="rounded bg-black px-3 py-2 text-white"
+                            className="btn btn-primary"
                           >
                             Save
                           </button>
@@ -607,7 +701,7 @@ export default function LocationManager() {
                             onClick={
                               cancelEditingZone
                             }
-                            className="rounded border px-3 py-2"
+                            className="btn btn-secondary"
                           >
                             Cancel
                           </button>
@@ -620,7 +714,7 @@ export default function LocationManager() {
                             {zone.name}
                           </div>
 
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-slate-500">
                             Moisture:{' '}
                             {zone.moisture_threshold_low}
                             {' – '}
@@ -634,7 +728,7 @@ export default function LocationManager() {
                             onClick={() =>
                               startEditingZone(zone)
                             }
-                            className="rounded border px-3 py-2"
+                            className="btn btn-secondary"
                           >
                             Edit
                           </button>
@@ -647,7 +741,7 @@ export default function LocationManager() {
                               )
                             }
                             disabled={loading}
-                            className="rounded border border-red-300 px-3 py-2 text-red-600"
+                            className="btn btn-danger"
                           >
                             Delete
                           </button>

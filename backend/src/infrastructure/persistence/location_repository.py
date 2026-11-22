@@ -102,6 +102,25 @@ class LocationRepository:
             self._db.scalars(statement).all()
         )
 
+    def rename_location(
+        self,
+        location_id: UUID,
+        name: str,
+    ) -> LocationRow | None:
+        row = self._db.get(LocationRow, location_id)
+
+        if row is None:
+            return None
+
+        try:
+            row.name = name
+            self._db.commit()
+            self._db.refresh(row)
+            return row
+        except Exception:
+            self._db.rollback()
+            raise
+
     def delete_location(
         self,
         location_id: UUID,

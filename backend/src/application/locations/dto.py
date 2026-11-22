@@ -41,6 +41,10 @@ class LocationCreateDto(BaseModel):
     )
 
 
+class LocationUpdateDto(BaseModel):
+    location_name: str = Field(min_length=1, max_length=128)
+
+
 class LocationSummaryDto(BaseModel):
     id: UUID
     name: str

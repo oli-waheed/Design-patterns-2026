@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -44,6 +45,28 @@ class ReadingRepository:
             self._row_to_reading(row)
             for row in rows
         ]
+
+    def list_range(
+        self,
+        device_id: UUID,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 2000,
+    ) -> list[Reading]:
+        """Readings in [start, end], oldest first (for charts)."""
+
+        statement = select(ReadingRow).where(ReadingRow.device_id == device_id)
+
+        if start is not None:
+            statement = statement.where(ReadingRow.recorded_at >= start)
+
+        if end is not None:
+            statement = statement.where(ReadingRow.recorded_at <= end)
+
+        # Uses ix_sensor_readings_device_recorded_at (device_id, recorded_at).
+        statement = statement.order_by(ReadingRow.recorded_at.asc()).limit(limit)
+
+        return [self._row_to_reading(row) for row in self._db.scalars(statement).all()]
 
     @staticmethod
     def _row_to_reading(row: ReadingRow) -> Reading:

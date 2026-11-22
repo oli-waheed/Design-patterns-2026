@@ -23,8 +23,8 @@ export type DeviceDto = {
   device_family: 'simulation' | 'edge'
   display_name: string
   default_config: Record<string, unknown>
-  zone_id?: string | null
-  location_id?: string | null
+  zone_id: string | null
+  location_id: string | null
   sampling_interval_seconds: number
   tracking_enabled: boolean
 }
@@ -383,6 +383,8 @@ export type StrategySelectionRequest = {
   strategy_key: StrategyKey
 }
 
+// Matches ZoneRecommendationResponse in OpenAPI (thresholds added in
+// Phase 13; the UI already displayed them).
 export type ZoneRecommendationDto = {
   zone_id: string
   zone_name: string
@@ -391,7 +393,7 @@ export type ZoneRecommendationDto = {
   high_threshold: number
   action: string
   reason: string
-  score?: number | null
+  score: number | null
 }
 
 export type AutomationEvaluationDto = {
@@ -598,6 +600,103 @@ export async function readSensorNow(
   if (!response.ok) {
     throw new Error(
       await getErrorMessage(response, 'Failed to read sensor'),
+    )
+  }
+
+  return response.json()
+}
+
+/* ---------------- Phase 13 ---------------- */
+
+/**
+ * Readings for a time window, oldest first (history chart).
+ * `from` / `to` are ISO-8601 strings.
+ */
+export async function getSensorReadingsRange(
+  sensorId: string,
+  from: string,
+  to: string,
+  limit = 5000,
+): Promise<ReadingDto[]> {
+  const params = new URLSearchParams({
+    from,
+    to,
+    limit: String(limit),
+  })
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/sensors/${sensorId}/readings?${params.toString()}`,
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, 'Failed to load reading history'),
+    )
+  }
+
+  return response.json()
+}
+
+export async function updateAlertStatus(
+  alertId: string,
+  status: 'active' | 'resolved',
+): Promise<AlertDto> {
+  const response = await fetch(`${API_BASE_URL}/api/alerts/${alertId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status }),
+  })
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, 'Failed to update alert'),
+    )
+  }
+
+  return response.json()
+}
+
+export type SavedStrategyDto = {
+  location_id: string
+  strategy_key: StrategyKey | null
+}
+
+export async function getSavedStrategy(
+  locationId: string,
+): Promise<SavedStrategyDto> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/locations/${locationId}/automation/strategy`,
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, 'Failed to load saved strategy'),
+    )
+  }
+
+  return response.json()
+}
+
+export async function renameLocation(
+  locationId: string,
+  locationName: string,
+): Promise<LocationSummaryDto> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/locations/${locationId}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ location_name: locationName }),
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, 'Failed to rename location'),
     )
   }
 

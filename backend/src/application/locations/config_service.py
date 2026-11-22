@@ -4,6 +4,7 @@ from application.locations.dto import (
     LocationCreateDto,
     LocationResponseDto,
     LocationSummaryDto,
+    LocationUpdateDto,
     ZoneCreateDto,
     ZoneResponseDto,
     ZoneUpdateDto,
@@ -74,6 +75,23 @@ class LocationConfigService:
             )
             for row in rows
         ]
+
+    def rename(
+        self,
+        location_id: UUID,
+        request: LocationUpdateDto,
+    ) -> LocationSummaryDto | None:
+        name = request.location_name.strip()
+
+        if not name:
+            raise ValueError("Location name must not be empty.")
+
+        row = self._repository.rename_location(location_id, name)
+
+        if row is None:
+            return None
+
+        return LocationSummaryDto(id=row.id, name=row.name)
 
     def delete(
         self,

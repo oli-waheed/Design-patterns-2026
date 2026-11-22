@@ -3,13 +3,12 @@ import { useEffect, useState } from 'react'
 import {
   evaluateAutomation,
   getLocations,
+  getSavedStrategy,
   saveAutomationStrategy,
   type AutomationEvaluationDto,
   type LocationSummaryDto,
   type StrategyKey,
 } from '../../services/api'
-
-const PREFERRED_LOCATION_ID = '8a85f6dc-8033-4366-9dc0-f47fc7766fcb'
 
 export default function StrategyPanel() {
   const [locations, setLocations] = useState<LocationSummaryDto[]>([])
@@ -20,6 +19,37 @@ export default function StrategyPanel() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+
+  // Strategy persisted for the selected location (Phase 6 automation_rules).
+  // undefined = still loading, null = nothing saved yet.
+  const [savedStrategy, setSavedStrategy] = useState<
+    StrategyKey | null | undefined
+  >(undefined)
+
+  useEffect(() => {
+    if (!locationId) {
+      return
+    }
+
+    let cancelled = false
+
+    getSavedStrategy(locationId)
+      .then((data) => {
+        if (!cancelled) {
+          setSavedStrategy(data.strategy_key)
+          setStrategy(data.strategy_key ?? 'conservative')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSavedStrategy(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [locationId])
 
   useEffect(() => {
     let cancelled = false
@@ -34,11 +64,7 @@ export default function StrategyPanel() {
         setLocations(data)
 
         if (data.length > 0) {
-          const preferredLocation = data.find(
-            (location) => location.id === PREFERRED_LOCATION_ID,
-          )
-
-          setLocationId(preferredLocation?.id ?? data[0].id)
+          setLocationId(data[0].id)
         } else {
           setLocationId('')
         }
@@ -72,6 +98,7 @@ export default function StrategyPanel() {
       setMessage('')
 
       await saveAutomationStrategy(locationId, strategy)
+      setSavedStrategy(strategy)
       setMessage(`Saved ${strategy} strategy successfully.`)
 
       // Clear old results because the active strategy has changed.
@@ -101,6 +128,7 @@ export default function StrategyPanel() {
       const evaluation = await evaluateAutomation(locationId)
 
       setResult(evaluation)
+      setSavedStrategy(evaluation.strategy_key)
 
       // The backend response is authoritative about the active strategy.
       setStrategy(evaluation.strategy_key)
@@ -118,6 +146,7 @@ export default function StrategyPanel() {
 
   function handleLocationChange(nextLocationId: string) {
     setLocationId(nextLocationId)
+    setSavedStrategy(undefined)
     setResult(null)
     setMessage('')
     setError('')
@@ -125,18 +154,15 @@ export default function StrategyPanel() {
 
   return (
     <section className="space-y-5">
-      <div>
-        <h3 className="text-lg font-semibold">Automation Strategy</h3>
-        <p className="mt-1 text-sm text-gray-600">
-          Choose a location and strategy, save your selection, then evaluate
-          the latest moisture readings.
-        </p>
-      </div>
+      <p className="text-sm text-slate-600">
+        Choose a location and strategy, save your selection, then evaluate
+        the latest moisture readings.
+      </p>
 
       {error && (
         <div
           role="alert"
-          className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700"
+          className="alert-error"
         >
           {error}
         </div>
@@ -145,7 +171,7 @@ export default function StrategyPanel() {
       {message && (
         <div
           role="status"
-          className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-800"
+          className="alert-ok"
         >
           {message}
         </div>
@@ -155,7 +181,7 @@ export default function StrategyPanel() {
         <div>
           <label
             htmlFor="automation-location"
-            className="mb-2 block text-sm font-medium"
+            className="field-label"
           >
             Location
           </label>
@@ -165,22 +191,22 @@ export default function StrategyPanel() {
             value={locationId}
             onChange={(event) => handleLocationChange(event.target.value)}
             disabled={loading || loadingLocations || locations.length === 0}
-            className="w-full rounded-lg border px-3 py-2"
+            className="field w-full"
           >
             <option value="">Select a location</option>
             {locations.map((location) => (
               <option key={location.id} value={location.id}>
-                {location.name} — {location.id.slice(0, 8)}
+                {location.name}
               </option>
             ))}
           </select>
 
           {loadingLocations && (
-            <p className="mt-1 text-xs text-gray-500">Loading locations...</p>
+            <p className="mt-1 text-xs text-slate-500">Loading locations...</p>
           )}
 
           {!loadingLocations && locations.length === 0 && (
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-slate-500">
               Create a location before using automation.
             </p>
           )}
@@ -189,7 +215,7 @@ export default function StrategyPanel() {
         <div>
           <label
             htmlFor="automation-strategy"
-            className="mb-2 block text-sm font-medium"
+            className="field-label"
           >
             Strategy
           </label>
@@ -204,15 +230,30 @@ export default function StrategyPanel() {
               setError('')
             }}
             disabled={loading}
-            className="w-full rounded-lg border px-3 py-2"
+            className="field w-full"
           >
             <option value="conservative">Conservative</option>
             <option value="aggressive">Aggressive</option>
           </select>
 
-          <p className="mt-1 text-xs text-gray-500">
-            Save your selection before evaluating to make it the active
-            strategy.
+          <p className="mt-2 text-xs text-slate-500">
+            {savedStrategy === undefined && locationId ? (
+              'Loading saved strategy…'
+            ) : savedStrategy ? (
+              <>
+                Saved strategy:{' '}
+                <span className="badge badge-info capitalize">
+                  {savedStrategy}
+                </span>
+                {strategy !== savedStrategy && (
+                  <span className="ml-1 text-warn-ink">
+                    (unsaved change — save to make it active)
+                  </span>
+                )}
+              </>
+            ) : (
+              'No strategy saved yet. Evaluate uses Conservative until you save one.'
+            )}
           </p>
         </div>
       </div>
@@ -222,7 +263,7 @@ export default function StrategyPanel() {
           type="button"
           onClick={handleSaveStrategy}
           disabled={loading || loadingLocations || !locationId}
-          className="rounded-lg bg-black px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn btn-primary"
         >
           {loading ? 'Please wait...' : 'Save Strategy'}
         </button>
@@ -231,7 +272,7 @@ export default function StrategyPanel() {
           type="button"
           onClick={handleEvaluate}
           disabled={loading || loadingLocations || !locationId}
-          className="rounded-lg border px-4 py-2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn btn-secondary"
         >
           {loading ? 'Please wait...' : 'Evaluate Automation'}
         </button>
@@ -239,18 +280,18 @@ export default function StrategyPanel() {
 
       {result && (
         <div className="space-y-4">
-          <div className="rounded-lg border p-4">
+          <div className="panel p-4">
             <h4 className="font-semibold">Evaluation Results</h4>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-sm text-slate-600">
               Active strategy:{' '}
-              <span className="font-medium text-gray-900">
+              <span className="font-medium text-slate-900">
                 {result.strategy_key}
               </span>
             </p>
           </div>
 
           {result.recommendations.length === 0 ? (
-            <p className="rounded-lg border p-4 text-sm text-gray-600">
+            <p className="rounded-lg border p-4 text-sm text-slate-600">
               No zones were found for this location.
             </p>
           ) : (
@@ -259,12 +300,12 @@ export default function StrategyPanel() {
                 const actionClass =
                   recommendation.action === 'irrigate'
                     ? 'bg-blue-100 text-blue-800'
-                    : 'bg-gray-100 text-gray-700'
+                    : 'bg-slate-100 text-slate-700'
 
                 return (
                   <article
                     key={recommendation.zone_id}
-                    className="rounded-lg border p-4"
+                    className="panel p-4"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h4 className="font-semibold">
@@ -280,7 +321,7 @@ export default function StrategyPanel() {
 
                     <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
                       <div>
-                        <dt className="text-gray-500">Moisture</dt>
+                        <dt className="text-slate-500">Moisture</dt>
                         <dd className="font-medium">
                           {recommendation.moisture == null
                             ? 'No reading'
@@ -289,21 +330,21 @@ export default function StrategyPanel() {
                       </div>
 
                       <div>
-                        <dt className="text-gray-500">Low threshold</dt>
+                        <dt className="text-slate-500">Low threshold</dt>
                         <dd className="font-medium">
                           {recommendation.low_threshold}
                         </dd>
                       </div>
 
                       <div>
-                        <dt className="text-gray-500">High threshold</dt>
+                        <dt className="text-slate-500">High threshold</dt>
                         <dd className="font-medium">
                           {recommendation.high_threshold}
                         </dd>
                       </div>
                     </dl>
 
-                    <p className="mt-3 text-sm text-gray-700">
+                    <p className="mt-3 text-sm text-slate-700">
                       {recommendation.reason}
                     </p>
                   </article>

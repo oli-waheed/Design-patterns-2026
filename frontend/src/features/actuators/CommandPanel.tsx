@@ -1,5 +1,9 @@
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import EmptyState from '../../components/ui/EmptyState'
+import { SkeletonList } from '../../components/ui/Skeleton'
 import { useRealtimeEvents } from '../../hooks/useRealtime'
 
 import {
@@ -33,6 +37,32 @@ const statusStyles = {
   rejected: 'bg-amber-100 text-amber-800',
 }
 
+/** Actuators of one family with their current states (no React state). */
+async function fetchActuators(family: string) {
+  const data = await getDevices(family as 'simulation' | 'edge', 'actuator')
+
+  const stateResults = await Promise.all(
+    data.map(async (device) => {
+      try {
+        const state = await getActuatorState(device.id)
+        return [device.id, state] as const
+      } catch {
+        return null
+      }
+    }),
+  )
+
+  const stateMap: Record<string, ActuatorStateDto> = {}
+
+  stateResults.forEach((result) => {
+    if (result) {
+      stateMap[result[0]] = result[1]
+    }
+  })
+
+  return { data, stateMap }
+}
+
 export default function CommandPanel({
   family,
 }: CommandPanelProps) {
@@ -52,29 +82,12 @@ export default function CommandPanel({
 
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [confirmStart, setConfirmStart] = useState(false)
 
-  async function loadActuators() {
-    const data = await getDevices(family, 'actuator')
-
-    const stateResults = await Promise.all(
-      data.map(async (device) => {
-        try {
-          const state = await getActuatorState(device.id)
-          return [device.id, state] as const
-        } catch {
-          return null
-        }
-      }),
-    )
-
-    const stateMap: Record<string, ActuatorStateDto> = {}
-
-    stateResults.forEach((result) => {
-      if (result) {
-        stateMap[result[0]] = result[1]
-      }
-    })
-
+  function applyActuators(
+    data: DeviceDto[],
+    stateMap: Record<string, ActuatorStateDto>,
+  ) {
     setDevices(data)
     setActuatorStates(stateMap)
 
@@ -85,6 +98,11 @@ export default function CommandPanel({
 
       return data[0]?.id ?? ''
     })
+  }
+
+  async function loadActuators() {
+    const { data, stateMap } = await fetchActuators(family)
+    applyActuators(data, stateMap)
   }
 
   async function loadHistory() {
@@ -113,8 +131,35 @@ export default function CommandPanel({
     }
   }
 
+  // Initial load (and when the device family changes). The loaders set
+  // state only after their requests finish, so the effect does not
+  // re-render synchronously.
   useEffect(() => {
-    void refreshAll()
+    let cancelled = false
+
+    Promise.all([fetchActuators(family), getCommandHistory(50)])
+      .then(([actuators, commandHistory]) => {
+        if (!cancelled) {
+          applyActuators(actuators.data, actuators.stateMap)
+          setHistory(commandHistory)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : 'Failed to load actuators',
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [family])
 
   // Live: refresh states and history when an actuator changes state,
@@ -140,6 +185,8 @@ export default function CommandPanel({
     : undefined
 
   const allowedCommands = selectedState?.allowed_commands ?? []
+
+  const closeConfirm = useCallback(() => setConfirmStart(false), [])
 
   async function handleCommand(
     commandType: string,
@@ -195,14 +242,14 @@ export default function CommandPanel({
     <div className="mt-6 space-y-8">
 
       {/* Device selection */}
-      <section className="rounded-lg border bg-white p-5">
+      <section className="panel p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h4 className="font-semibold">
               Actuator control
             </h4>
 
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-slate-500">
               Select an actuator to execute an available command.
             </p>
           </div>
@@ -211,22 +258,23 @@ export default function CommandPanel({
             type="button"
             onClick={() => void refreshAll()}
             disabled={refreshing || submitting}
-            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            className="btn btn-secondary"
           >
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
 
         {loading && (
-          <p className="mt-4 text-sm text-gray-500">
-            Loading actuators...
-          </p>
+          <div className="mt-4">
+            <SkeletonList rows={2} label="Loading actuators…" rowClassName="h-12" />
+          </div>
         )}
 
         {!loading && devices.length === 0 && (
-          <div className="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
-            No actuators found for the {family} device family.
-            Provision devices in the Devices section first.
+          <div className="mt-4">
+            <EmptyState title={`No ${family} actuators`}>
+              Provision devices in the Devices section first.
+            </EmptyState>
           </div>
         )}
 
@@ -235,7 +283,7 @@ export default function CommandPanel({
             <div>
               <label
                 htmlFor="command-device"
-                className="mb-2 block text-sm font-medium"
+                className="field-label"
               >
                 Select actuator
               </label>
@@ -247,7 +295,7 @@ export default function CommandPanel({
                   setSelectedDeviceId(event.target.value)
                 }
                 disabled={submitting}
-                className="w-full rounded-md border px-3 py-2 text-sm"
+                className="field w-full"
               >
                 {devices.map((device) => (
                   <option key={device.id} value={device.id}>
@@ -258,8 +306,8 @@ export default function CommandPanel({
             </div>
 
             {selectedDevice && (
-              <div className="rounded-lg bg-gray-50 p-4">
-                <p className="text-sm text-gray-500">
+              <div className="rounded-lg bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">
                   Selected device
                 </p>
 
@@ -267,7 +315,7 @@ export default function CommandPanel({
                   {selectedDevice.display_name}
                 </p>
 
-                <p className="mt-1 text-sm text-gray-600">
+                <p className="mt-1 text-sm text-slate-600">
                   Type: {selectedDevice.device_type}
                 </p>
 
@@ -281,7 +329,7 @@ export default function CommandPanel({
                       {selectedState.state}
                     </span>
                   ) : (
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-slate-500">
                       Unavailable
                     </span>
                   )}
@@ -297,13 +345,13 @@ export default function CommandPanel({
                       allowedCommands.map((command) => (
                         <span
                           key={command}
-                          className="rounded bg-white px-2 py-1 text-xs text-gray-700"
+                          className="rounded bg-white px-2 py-1 text-xs text-slate-700"
                         >
                           {command}
                         </span>
                       ))
                     ) : (
-                      <span className="text-sm text-gray-500">
+                      <span className="text-sm text-slate-500">
                         No commands currently available.
                       </span>
                     )}
@@ -317,7 +365,7 @@ export default function CommandPanel({
 
       {/* Command controls */}
       {selectedDevice && selectedState && (
-        <section className="rounded-lg border bg-white p-5">
+        <section className="panel p-5">
           <h4 className="font-semibold">
             Available controls
           </h4>
@@ -326,12 +374,12 @@ export default function CommandPanel({
             <div className="mt-4 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => void handleCommand('start_pump')}
+                onClick={() => setConfirmStart(true)}
                 disabled={
                   submitting ||
                   !allowedCommands.includes('start_pump')
                 }
-                className="rounded-md bg-green-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-40"
+                className="btn bg-emerald-700 text-white hover:bg-emerald-800"
               >
                 {submitting ? 'Processing...' : 'Start pump'}
               </button>
@@ -343,7 +391,7 @@ export default function CommandPanel({
                   submitting ||
                   !allowedCommands.includes('stop_pump')
                 }
-                className="rounded-md bg-red-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40"
+                className="btn bg-red-700 text-white hover:bg-red-800"
               >
                 {submitting ? 'Processing...' : 'Stop pump'}
               </button>
@@ -398,38 +446,38 @@ export default function CommandPanel({
       )}
 
       {notice && (
-        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+        <div className="alert-ok">
           {notice}
         </div>
       )}
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="alert-error">
           {error}
         </div>
       )}
 
       {/* Command history */}
-      <section className="rounded-lg border bg-white p-5">
+      <section className="panel p-5">
         <div className="mb-4">
           <h4 className="font-semibold">
             Command history
           </h4>
 
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-slate-500">
             Latest 50 command attempts, including successful,
             failed and rejected commands.
           </p>
         </div>
 
         {history.length === 0 ? (
-          <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+          <p className="empty-state">
             No command history available yet.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
+          <div className="panel overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">
                     Time
@@ -453,10 +501,10 @@ export default function CommandPanel({
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-slate-200">
                 {history.map((record) => (
                   <tr key={record.id}>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                       {formatDate(record.created_at)}
                     </td>
 
@@ -464,7 +512,7 @@ export default function CommandPanel({
                       {record.command_type}
                     </td>
 
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-4 py-3 text-slate-600">
                       {JSON.stringify(record.payload)}
                     </td>
 
@@ -478,7 +526,7 @@ export default function CommandPanel({
                       </span>
                     </td>
 
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-4 py-3 text-slate-600">
                       {record.error_message || '—'}
                     </td>
                   </tr>
@@ -488,6 +536,17 @@ export default function CommandPanel({
           </div>
         )}
       </section>
+      <ConfirmDialog
+        open={confirmStart}
+        title="Start the pump?"
+        message={`${selectedDevice?.display_name ?? 'The pump'} will start watering. If it keeps running for 30 minutes or more, the max-runtime policy blocks further commands to it.`}
+        confirmLabel="Start pump"
+        onCancel={closeConfirm}
+        onConfirm={() => {
+          setConfirmStart(false)
+          void handleCommand('start_pump')
+        }}
+      />
     </div>
   )
 }

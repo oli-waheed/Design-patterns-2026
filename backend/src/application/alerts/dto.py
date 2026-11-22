@@ -23,3 +23,9 @@ class AlertDto(BaseModel):
     event_type: str
     status: AlertStatus
     created_at: datetime
+
+
+class AlertStatusUpdateDto(BaseModel):
+    """PATCH /api/alerts/{id} body, e.g. {"status": "resolved"}."""
+
+    status: AlertStatus

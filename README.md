@@ -234,6 +234,32 @@ A new `sensor_readings` row with `source` `mqtt` appears, and the dashboard rece
 
 See [docs/schema.md](docs/schema.md) for the migration chain, foreign-key `ON DELETE` rules, indexes and seed data.
 
+## Dashboard polish (Phase 13, optional)
+
+Phase 13 polishes the existing dashboard; it is not a rewrite and adds no business tables.
+
+- **Design tokens:** `frontend/src/index.css` defines Tailwind v4 `@theme` status colors (ok = emerald, warn = amber, error = red) and shared utilities (`card`, `panel`, `field`, `btn`, `badge-*`, `alert-*`, `empty-state`, `skeleton`). Every panel uses them.
+- **Responsive:** sections stack on narrow screens; sensor cards are a 1/2/3-column grid; filters wrap. Checked at 390 px width with no horizontal overflow.
+- **Loading / empty / error:** skeletons while loading, an empty state on every list, and an error boundary around each dashboard section so one crash does not blank the page.
+- **History chart:** the History section plots stored readings from `GET /api/sensors/{id}/readings?from=&to=` (ISO-8601; range mode returns rows **oldest first**, without `from`/`to` the endpoint keeps returning the latest N newest first). Ranges 15 min to 7 days, hover crosshair with tooltip, zone target band, table view, and “No readings in this range” when empty. New readings are appended live.
+- **Index:** no new migration. The Phase 5 index `ix_sensor_readings_device_recorded_at (device_id, recorded_at)` already serves the range query.
+- **Alerts:** filter Active / All / Resolved, sort newest or most severe first, scrollable list, and Resolve / Reopen through `PATCH /api/alerts/{id}` with `{ "status": "resolved" }` (resolving also sets `acknowledged_at`).
+- **WebSocket:** exponential backoff 1 s → 2 s → 4 s → 8 s → 15 s cap. The header badge shows Live / Connecting / Offline with a retry countdown and a “Retry now” button.
+- **API types:** `services/api.ts` matches OpenAPI. Automation recommendations now include `low_threshold`, `high_threshold` and `score`, which the UI already displayed.
+
+### Panel checklist
+
+| Area | Polish task | Status |
+|---|---|---|
+| Overview | Single refresh; stale-data indicator | Done: one Refresh button; badge shows “updated … ago” and turns into a warning after 60 s without an update |
+| Sensors | Sparkline or last-value trend on cards | Done: latest value plus a sparkline of the last 20 readings, live over WebSocket |
+| Automation | Show strategy from persisted config | Done: `GET /api/locations/{id}/automation/strategy` loads the saved strategy and flags unsaved changes |
+| Controls | Confirm dialog for pump start | Done: Tailwind modal before `start_pump` (Escape or Cancel closes it) |
+| Events | Scrollable feed, severity sorting | Done: scrollable list, “Most severe first” sort, resolve / reopen |
+| Config | Edit existing location | Done: rename a location (`PATCH /api/locations/{id}`); zones were already editable |
+
+Out of scope, as the requirements say: authentication / roles and a visual rule editor.
+
 ## Phase Roadmap
 
 See [docs/phases/README.md](docs/phases/README.md) for the complete phase order.

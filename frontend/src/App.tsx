@@ -7,7 +7,7 @@ function HomePage() {
     <section>
       <h2 className="text-3xl font-bold">Welcome to Smart Greenhouse</h2>
 
-      <p className="mt-3 text-gray-600">
+      <p className="mt-3 text-slate-600">
         Monitor and control your smart greenhouse from one place.
       </p>
     </section>

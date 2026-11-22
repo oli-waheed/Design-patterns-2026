@@ -1,1 +1,137 @@
 @import "tailwindcss";
+
+/*
+ * Smart Greenhouse design tokens (Phase 13).
+ *
+ * One neutral (slate), one accent, and three status roles. Panels use the
+ * utilities below instead of repeating long class strings, so spacing,
+ * borders and status colors stay consistent across Phases 2-12.
+ */
+@theme {
+  /* Status roles: ok = emerald, warn = amber, error = red. */
+  --color-ok: var(--color-emerald-600);
+  --color-ok-soft: var(--color-emerald-50);
+  --color-ok-ink: var(--color-emerald-800);
+
+  --color-warn: var(--color-amber-500);
+  --color-warn-soft: var(--color-amber-50);
+  --color-warn-ink: var(--color-amber-800);
+
+  --color-error: var(--color-red-600);
+  --color-error-soft: var(--color-red-50);
+  --color-error-ink: var(--color-red-700);
+
+  --color-info: var(--color-sky-600);
+  --color-info-soft: var(--color-sky-50);
+  --color-info-ink: var(--color-sky-800);
+
+  /* Chart series (single moisture series) and chart chrome. */
+  --color-series-1: #2a78d6;
+  --color-chart-grid: var(--color-slate-200);
+  --color-chart-band: var(--color-emerald-50);
+}
+
+/* ---- Surfaces ---------------------------------------------------------- */
+
+/* Top-level dashboard section. */
+@utility card {
+  @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+}
+
+/* Item inside a section (a sensor, a zone, a form). */
+@utility panel {
+  @apply rounded-lg border border-slate-200 bg-white;
+}
+
+/* Quiet inset area (settings, JSON, summaries). */
+@utility panel-muted {
+  @apply rounded-lg bg-slate-50;
+}
+
+/* ---- Type ---------------------------------------------------------------- */
+
+@utility section-title {
+  @apply text-lg font-semibold text-slate-900;
+}
+
+@utility subsection-title {
+  @apply font-semibold text-slate-900;
+}
+
+@utility text-muted {
+  @apply text-sm text-slate-500;
+}
+
+@utility field-label {
+  @apply mb-1 block text-sm font-medium text-slate-700;
+}
+
+/* ---- Controls ------------------------------------------------------------ */
+
+@utility field {
+  @apply rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply bg-slate-900 text-white hover:bg-slate-700;
+}
+
+@utility btn-secondary {
+  @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+}
+
+@utility btn-danger {
+  @apply border border-red-200 bg-white text-error-ink hover:bg-error-soft;
+}
+
+@utility btn-sm {
+  @apply px-3 py-1.5;
+}
+
+/* ---- Status -------------------------------------------------------------- */
+
+@utility badge {
+  @apply inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+}
+
+@utility badge-ok {
+  @apply bg-ok-soft text-ok-ink ring-1 ring-emerald-200;
+}
+
+@utility badge-warn {
+  @apply bg-warn-soft text-warn-ink ring-1 ring-amber-200;
+}
+
+@utility badge-error {
+  @apply bg-error-soft text-error-ink ring-1 ring-red-200;
+}
+
+@utility badge-info {
+  @apply bg-info-soft text-info-ink ring-1 ring-sky-200;
+}
+
+@utility badge-neutral {
+  @apply bg-slate-100 text-slate-700 ring-1 ring-slate-200;
+}
+
+@utility alert-error {
+  @apply rounded-lg border border-red-200 bg-error-soft p-3 text-sm text-error-ink;
+}
+
+@utility alert-ok {
+  @apply rounded-lg border border-emerald-200 bg-ok-soft p-3 text-sm text-ok-ink;
+}
+
+@utility empty-state {
+  @apply rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500;
+}
+
+/* ---- Loading ------------------------------------------------------------- */
+
+@utility skeleton {
+  @apply animate-pulse rounded-md bg-slate-200;
+}

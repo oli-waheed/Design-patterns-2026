@@ -42,6 +42,7 @@ This project follows the Design Patterns course phases in numerical order.
 | 10 — Command | Complete | [command.md](../patterns/command.md) |
 | 11 — Observer | Complete | [observer.md](../patterns/observer.md) |
 | 12 — Production API, WebSocket, schema hardening | Complete | [README](../../README.md#api-and-realtime-phase-12), [schema.md](../schema.md) |
+| 13 — Dashboard polish (optional) | Complete | [README](../../README.md#dashboard-polish-phase-13-optional) |
 
 Phases 1–12 complete the required course track. Phases 13–14 are optional.
 

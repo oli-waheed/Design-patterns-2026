@@ -1,6 +1,9 @@
 
 import { useEffect, useState } from 'react'
 
+import EmptyState from '../../components/ui/EmptyState'
+import { SkeletonList } from '../../components/ui/Skeleton'
+
 import {
   assignDeviceToZone,
   getDevices,
@@ -21,7 +24,6 @@ import type {
 import type {
   DeviceDto,
   LocationResponseDto,
-  LocationSummaryDto,
 } from '../../services/api'
 
 type DeviceFamily = 'simulation' | 'edge'
@@ -36,6 +38,38 @@ const stateStyles: Record<ActuatorState, string> = {
   running: 'bg-emerald-100 text-emerald-700',
   error: 'bg-red-100 text-red-700',
   maintenance: 'bg-amber-100 text-amber-800',
+}
+
+async function fetchDevicesWithStates(family: 'simulation' | 'edge') {
+  const devices = await getDevices(family)
+
+  const stateResults = await Promise.all(
+    devices
+      .filter((device) => device.role === 'actuator')
+      .map(async (device) => {
+        try {
+          return [device.id, await getActuatorState(device.id)] as const
+        } catch {
+          return null
+        }
+      }),
+  )
+
+  const states: Record<string, ActuatorStateDto> = {}
+
+  stateResults.forEach((result) => {
+    if (result) {
+      states[result[0]] = result[1]
+    }
+  })
+
+  return { devices, states }
+}
+
+async function fetchFullLocations() {
+  const summaries = await getLocations()
+
+  return Promise.all(summaries.map((location) => getLocation(location.id)))
 }
 
 export default function DeviceList({
@@ -96,28 +130,34 @@ export default function DeviceList({
     }
   }
 
-  async function loadLocations() {
-    try {
-      const summaries: LocationSummaryDto[] =
-        await getLocations()
-
-      const fullLocations = await Promise.all(
-        summaries.map((location) => getLocation(location.id)),
-      )
-
-      setLocations(fullLocations)
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to load locations',
-      )
-    }
-  }
-
+  // Initial load and family change: state is set only after the requests
+  // finish (the button handlers keep using loadDevices).
   useEffect(() => {
-    loadDevices()
-    loadLocations()
+    let cancelled = false
+
+    Promise.all([fetchDevicesWithStates(family), fetchFullLocations()])
+      .then(([deviceData, locationData]) => {
+        if (!cancelled) {
+          setDevices(deviceData.devices)
+          setActuatorStates(deviceData.states)
+          setLocations(locationData)
+          setError(null)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load devices')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [family])
 
   async function handleProvision() {
@@ -190,7 +230,7 @@ export default function DeviceList({
               : 'Edge devices'}
           </h4>
 
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-slate-500">
             Device family: {family}
           </p>
         </div>
@@ -199,7 +239,7 @@ export default function DeviceList({
           type="button"
           onClick={handleProvision}
           disabled={provisioning}
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="btn btn-primary"
         >
           {provisioning
             ? 'Provisioning...'
@@ -208,21 +248,19 @@ export default function DeviceList({
       </div>
 
       {loading && (
-        <p className="text-sm text-gray-500">
-          Loading devices...
-        </p>
+        <SkeletonList rows={3} label="Loading devices…" rowClassName="h-16" />
       )}
 
       {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <p className="alert-error">
           {error}
         </p>
       )}
 
       {!loading && !error && devices.length === 0 && (
-        <p className="rounded-md bg-gray-50 p-4 text-sm text-gray-500">
-          No devices found for this family.
-        </p>
+        <EmptyState title="No devices in this family">
+          Use “Provision” to create a demo device set.
+        </EmptyState>
       )}
 
       {!loading && devices.length > 0 && (
@@ -234,7 +272,7 @@ export default function DeviceList({
             return (
               <article
                 key={device.id}
-                className="rounded-lg border bg-white p-4"
+                className="panel p-4"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -242,16 +280,16 @@ export default function DeviceList({
                       {device.display_name}
                     </h4>
 
-                    <p className="mt-1 text-sm text-gray-500">
+                    <p className="mt-1 text-sm text-slate-500">
                       Type: {device.device_type}
                     </p>
 
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
                         Role: {device.role}
                       </span>
 
-                      <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
                         Family: {device.device_family}
                       </span>
                     </div>
@@ -259,8 +297,8 @@ export default function DeviceList({
                 </div>
 
                 {device.role === 'actuator' && (
-                  <div className="mt-4 rounded-md bg-gray-50 p-3">
-                    <p className="text-sm font-medium text-gray-700">
+                  <div className="mt-4 rounded-md bg-slate-50 p-3">
+                    <p className="text-sm font-medium text-slate-700">
                       Actuator state
                     </p>
 
@@ -275,7 +313,7 @@ export default function DeviceList({
                         </span>
 
                         <div className="mt-3">
-                          <p className="text-xs font-medium text-gray-600">
+                          <p className="text-xs font-medium text-slate-600">
                             Allowed commands
                           </p>
 
@@ -284,7 +322,7 @@ export default function DeviceList({
                               (command) => (
                                 <span
                                   key={command}
-                                  className="rounded bg-white px-2 py-1 text-xs text-gray-700"
+                                  className="rounded bg-white px-2 py-1 text-xs text-slate-700"
                                 >
                                   {command}
                                 </span>
@@ -294,7 +332,7 @@ export default function DeviceList({
                         </div>
                       </>
                     ) : (
-                      <p className="mt-2 text-xs text-gray-500">
+                      <p className="mt-2 text-xs text-slate-500">
                         State information unavailable.
                       </p>
                     )}
@@ -304,7 +342,7 @@ export default function DeviceList({
                 <div className="mt-4">
                   <label
                     htmlFor={`zone-${device.id}`}
-                    className="mb-2 block text-sm font-medium"
+                    className="field-label"
                   >
                     Location / Zone
                   </label>
@@ -319,7 +357,7 @@ export default function DeviceList({
                       )
                     }
                     disabled={assigningDeviceId === device.id}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    className="field w-full"
                   >
                     <option value="">Unassigned</option>
 
@@ -336,7 +374,7 @@ export default function DeviceList({
                   </select>
                 </div>
 
-                <pre className="mt-4 overflow-x-auto rounded-md bg-gray-50 p-3 text-xs text-gray-700">
+                <pre className="panel-muted mt-4 overflow-x-auto p-3 text-xs text-slate-700">
                   {JSON.stringify(
                     device.default_config,
                     null,

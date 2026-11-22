@@ -14,6 +14,18 @@ class AlertQueryService:
     def __init__(self, repository: AlertRepository) -> None:
         self._repository = repository
 
+    def update_status(
+        self,
+        alert_id: UUID,
+        status: str,
+    ) -> AlertDto | None:
+        row = self._repository.update_status(alert_id, status)
+
+        if row is None:
+            return None
+
+        return AlertDto.model_validate(row)
+
     def list_alerts(
         self,
         status: str = "active",

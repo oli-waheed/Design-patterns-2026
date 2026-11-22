@@ -18,16 +18,17 @@ export default function HealthStatus() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-red-100 px-4 py-2 text-sm text-red-800">
-        - System unavailable
+      <div className="badge badge-error px-3 py-1.5 text-sm">
+        <span aria-hidden="true">⛔</span>
+        API unavailable
       </div>
     )
   }
 
   if (!health) {
     return (
-      <div className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700">
-        - Checking system...
+      <div className="badge badge-neutral px-3 py-1.5 text-sm">
+        Checking API…
       </div>
     )
   }
@@ -36,13 +37,12 @@ export default function HealthStatus() {
 
   return (
     <div
-      className={`rounded-lg px-4 py-2 text-sm ${
-        isHealthy
-          ? 'bg-green-100 text-green-800'
-          : 'bg-yellow-100 text-yellow-800'
+      className={`badge px-3 py-1.5 text-sm ${
+        isHealthy ? 'badge-ok' : 'badge-warn'
       }`}
     >
-      - {isHealthy ? 'System healthy' : 'System degraded'}
+      <span aria-hidden="true">{isHealthy ? '✓' : '⚠'}</span>
+      {isHealthy ? 'API healthy' : 'API degraded'}
     </div>
   )
 }

@@ -49,15 +49,31 @@ type EventHandler = (event: RealtimeEvent) => void
 type StatusListener = (status: RealtimeStatus) => void
 
 const MIN_RETRY_MS = 1000
-const MAX_RETRY_MS = 10000
+const MAX_RETRY_MS = 15000
+
+/** Snapshot for the header indicator. Replaced (never mutated) on change. */
+export type RealtimeInfo = {
+  status: RealtimeStatus
+  /** Failed attempts since the last successful connection. */
+  attempt: number
+  /** When the next reconnect is scheduled (ms since epoch), if any. */
+  nextRetryAt: number | null
+}
 
 const eventHandlers = new Set<EventHandler>()
 const statusListeners = new Set<StatusListener>()
 
 let socket: WebSocket | null = null
 let status: RealtimeStatus = 'down'
-let retryDelay = MIN_RETRY_MS
+let attempt = 0
 let retryTimer: number | null = null
+let info: RealtimeInfo = { status, attempt, nextRetryAt: null }
+const infoListeners = new Set<() => void>()
+
+function publishInfo(nextRetryAt: number | null) {
+  info = { status, attempt, nextRetryAt }
+  infoListeners.forEach((listener) => listener())
+}
 
 export function getWebSocketUrl(): string {
   const url = new URL('/api/ws', API_BASE_URL)
@@ -72,6 +88,7 @@ function setStatus(next: RealtimeStatus) {
 
   status = next
   statusListeners.forEach((listener) => listener(next))
+  publishInfo(next === 'down' ? info.nextRetryAt : null)
 }
 
 function hasSubscribers() {
@@ -83,13 +100,26 @@ function scheduleReconnect() {
     return
   }
 
+  // Exponential backoff: 1 s, 2 s, 4 s, 8 s, then 15 s between attempts.
+  const delay = Math.min(MIN_RETRY_MS * 2 ** attempt, MAX_RETRY_MS)
+  attempt += 1
+
   retryTimer = window.setTimeout(() => {
     retryTimer = null
     connect()
-  }, retryDelay)
+  }, delay)
 
-  // Exponential backoff: 1 s, 2 s, 4 s ... up to 10 s.
-  retryDelay = Math.min(retryDelay * 2, MAX_RETRY_MS)
+  publishInfo(Date.now() + delay)
+}
+
+/** Try now instead of waiting for the backoff timer. */
+export function reconnectNow() {
+  if (retryTimer !== null) {
+    window.clearTimeout(retryTimer)
+    retryTimer = null
+  }
+
+  connect()
 }
 
 function connect() {
@@ -112,7 +142,7 @@ function connect() {
   socket = ws
 
   ws.onopen = () => {
-    retryDelay = MIN_RETRY_MS
+    attempt = 0
     setStatus('connected')
   }
 
@@ -185,6 +215,21 @@ export function subscribeRealtimeStatus(
     statusListeners.delete(listener)
     disconnectIfUnused()
   }
+}
+
+/** For useSyncExternalStore: status plus retry details. */
+export function subscribeRealtimeInfo(listener: () => void): () => void {
+  infoListeners.add(listener)
+  const unsubscribeStatus = subscribeRealtimeStatus(() => {})
+
+  return () => {
+    infoListeners.delete(listener)
+    unsubscribeStatus()
+  }
+}
+
+export function getRealtimeInfo(): RealtimeInfo {
+  return info
 }
 
 export function getRealtimeStatus(): RealtimeStatus {

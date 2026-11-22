@@ -17,11 +17,19 @@ class ZoneRecommendationResponse(BaseModel):
     zone_id: UUID
     zone_name: str
     moisture: float | None
+    low_threshold: float
+    high_threshold: float
     action: str
     reason: str
+    score: float | None = None
 
 
 class AutomationEvaluationResponse(BaseModel):
     location_id: UUID
     strategy_key: str
     recommendations: list[ZoneRecommendationResponse]
+
+
+class StrategyResponse(BaseModel):
+    location_id: UUID
+    strategy_key: str | None

@@ -34,6 +34,14 @@ class AutomationService:
             strategy_key,
         )
 
+    def get_strategy(self, location_id: UUID) -> str | None:
+        """The persisted strategy key, or None when nothing was saved."""
+
+        if not self._repository.location_exists(location_id):
+            raise LookupError("Location not found.")
+
+        return self._repository.get_strategy_key(location_id)
+
     def evaluate(
         self,
         location_id: UUID,
@@ -75,8 +83,11 @@ class AutomationService:
                     zone_id=zone.id,
                     zone_name=zone.name,
                     moisture=moisture,
+                    low_threshold=context.low,
+                    high_threshold=context.high,
                     action=recommendation.action,
                     reason=recommendation.reason,
+                    score=recommendation.score,
                 )
             )
 

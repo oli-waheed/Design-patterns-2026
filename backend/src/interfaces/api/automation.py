@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from application.automation.automation_service import AutomationService
 from application.automation.dto import (
     AutomationEvaluationResponse,
+    StrategyResponse,
     StrategySelectionRequest,
 )
 from infrastructure.db import get_db
@@ -26,6 +27,30 @@ def get_automation_service(
 ) -> AutomationService:
     repository = AutomationRepository(db)
     return AutomationService(repository)
+
+
+@router.get(
+    "/{location_id}/automation/strategy",
+    response_model=StrategyResponse,
+)
+def get_strategy(
+    location_id: UUID,
+    service: AutomationService = Depends(get_automation_service),
+) -> StrategyResponse:
+    """Persisted strategy for the location (null when none was saved)."""
+
+    try:
+        strategy_key = service.get_strategy(location_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return StrategyResponse(
+        location_id=location_id,
+        strategy_key=strategy_key,
+    )
 
 
 @router.put(

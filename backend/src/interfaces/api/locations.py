@@ -10,6 +10,7 @@ from application.locations.dto import (
     LocationCreateDto,
     LocationResponseDto,
     LocationSummaryDto,
+    LocationUpdateDto,
     ZoneCreateDto,
     ZoneResponseDto,
     ZoneUpdateDto,
@@ -83,6 +84,34 @@ def get_location(
     ),
 ) -> LocationResponseDto:
     location = service.get(location_id)
+
+    if location is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Location not found.",
+        )
+
+    return location
+
+
+@router.patch(
+    "/{location_id}",
+    response_model=LocationSummaryDto,
+)
+def rename_location(
+    location_id: UUID,
+    request: LocationUpdateDto,
+    service: LocationConfigService = Depends(
+        get_location_config_service
+    ),
+) -> LocationSummaryDto:
+    try:
+        location = service.rename(location_id, request)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
     if location is None:
         raise HTTPException(

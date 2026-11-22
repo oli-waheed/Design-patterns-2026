@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import AlertRow
@@ -40,6 +40,28 @@ class AlertRepository:
             self._db.refresh(row)
             return row
 
+        except Exception:
+            self._db.rollback()
+            raise
+
+    def update_status(
+        self,
+        alert_id: UUID,
+        status: str,
+    ) -> AlertRow | None:
+        """Set status; resolving also stamps acknowledged_at."""
+
+        row = self._db.get(AlertRow, alert_id)
+
+        if row is None:
+            return None
+
+        try:
+            row.status = status
+            row.acknowledged_at = func.now() if status == "resolved" else None
+            self._db.commit()
+            self._db.refresh(row)
+            return row
         except Exception:
             self._db.rollback()
             raise
