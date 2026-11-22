@@ -11,6 +11,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
@@ -175,7 +176,7 @@ class ActuatorStateRow(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("now()"),
-        onupdate=datetime.now,
+        onupdate=func.now(),
     )
 
 
@@ -258,7 +259,7 @@ class AutomationRuleRow(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("now()"),
-        onupdate=datetime.now,
+        onupdate=func.now(),
     )
 
 
