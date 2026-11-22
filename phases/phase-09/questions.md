@@ -41,7 +41,7 @@
 > [!NOTE]
 > ***Your Answer***
 >
-> `ActuatorPort` is the common interface for actuator operations. In our implementation, I use `LoggingActuatorDecorator` and `MaxRunTimeActuatorDecorator` around `SimulationActuatorAdapter`. The chain is created in the `DevicesService`, which is the application service. It should not be created inside the HTTP router because the router should handle HTTP requests and responses, not contain the business logic for composing actuator policies. Keeping the chain in the service makes it easier to test and extend.
+> `ActuatorPort` is the common interface for actuator operations. In our implementation, I use `LoggingActuatorDecorator` and `MaxRunTimeActuatorDecorator` around `SimulationActuatorAdapter`. The chain is built in one place, the `build_actuator_port()` factory in `infrastructure/adapters/actuators/factory.py`, and the application services such as `CommandService` call it. It should not be created inside the HTTP router because the router should handle HTTP requests and responses, not contain the logic for composing actuator policies. Keeping the chain in one factory makes it easier to test and to change the order or add a new policy.
 
 5. Max run-time can **short-circuit**: the inner adapter is never called. Why must a blocked attempt still produce a row in `actuator_execution_log` with `success=false` and the policy named in `policy_applied`?
 
@@ -71,7 +71,7 @@
 > [!NOTE]
 > ***Your Answer***
 >
-> Decorator keeps the same interface and adds extra behaviour around an existing object. In Phase 9, the decorators implement `ActuatorPort` and add logging and runtime protection. Adapter has a different purpose: it translates an existing or external interface into the interface that our application expects. In Phase 5, `SimulationActuatorAdapter` provides the actuator implementation through the application port. So Decorator adds behaviour, while Adapter makes different interfaces work together.
+> Decorator keeps the same interface and adds extra behaviour around an existing object. In Phase 9, the decorators implement `ActuatorPort` and add logging and runtime protection. Adapter has a different purpose: it translates an existing or external interface into the interface that our application expects. In Phase 5, the sensor adapters translate different data formats into one `Reading`. For example, `VendorSensorAdapter` converts fields such as `readingValue` and `measurementUnit`, and `MqttSensorAdapter` converts an MQTT payload. So Decorator adds behaviour, while Adapter makes different interfaces work together.
 
 9. Contrast Decorator with **inheritance** of combined policies. How does composition let you add or remove a policy without a new subclass for every combination?
 
