@@ -71,10 +71,13 @@ export type CreateLocationRequest = {
   zones: ZoneInput[]
 }
 
-const API_BASE_URL =
+// The single place the backend host is configured. Every REST path below
+// starts with /api, and the dashboard WebSocket is derived from the same
+// host in services/realtime.ts.
+export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-async function getErrorMessage(
+export async function getErrorMessage(
   response: Response,
   fallback: string,
 ): Promise<string> {
@@ -549,6 +552,52 @@ export async function getAlerts(
   if (!response.ok) {
     throw new Error(
       await getErrorMessage(response, 'Failed to load alerts'),
+    )
+  }
+
+  return response.json()
+}
+
+/* ---------------- Sensor readings (Phase 5 / Phase 12) ---------------- */
+
+export type ReadingDto = {
+  device_id: string
+  value: number
+  unit: string
+  source: string
+  recorded_at: string
+}
+
+export async function getSensorReadings(
+  sensorId: string,
+  limit = 1,
+): Promise<ReadingDto[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/sensors/${sensorId}/readings?limit=${limit}`,
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, 'Failed to load readings'),
+    )
+  }
+
+  return response.json()
+}
+
+export async function readSensorNow(
+  sensorId: string,
+): Promise<ReadingDto> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/sensors/${sensorId}/read`,
+    {
+      method: 'POST',
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, 'Failed to read sensor'),
     )
   }
 

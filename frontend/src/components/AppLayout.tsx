@@ -1,4 +1,5 @@
 import { Link, Outlet } from 'react-router-dom'
+import ConnectionStatus from './ConnectionStatus'
 import HealthStatus from './HealthStatus'
 
 export default function AppLayout() {
@@ -13,7 +14,10 @@ export default function AppLayout() {
             </p>
           </div>
 
-          <HealthStatus />
+          <div className="flex items-center gap-3">
+            <ConnectionStatus />
+            <HealthStatus />
+          </div>
         </div>
 
         <nav className="mx-auto flex max-w-7xl gap-6 px-6 pb-4 text-sm">

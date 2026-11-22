@@ -5,6 +5,7 @@ from domain.devices.entity import Device
 from domain.events.bus import EventBus
 from domain.events.events import ReadingCreated
 from domain.sensors.reading import Reading
+from infrastructure.adapters.sensors.mqtt import MqttSensorAdapter
 from infrastructure.adapters.sensors.selector import SensorAdapterSelector
 from infrastructure.persistence.device_repository import DeviceRepository
 from infrastructure.persistence.reading_repository import ReadingRepository
@@ -41,6 +42,24 @@ class ReadingIngest:
 
         # Every adapter implements SensorPort, so no protocol checks here.
         reading = adapter.read(device)
+
+        return self._store_and_publish(device, reading)
+
+    def record_payload(
+        self,
+        device_id: UUID,
+        payload: dict,
+        source: str,
+    ) -> ReadingDto:
+        """Push path for device HTTP ("http") and the MQTT broker ("mqtt").
+
+        The payload is translated by the Phase 5 translator, then stored
+        and published exactly like every other reading.
+        """
+
+        device = self._get_device(device_id)
+
+        reading = MqttSensorAdapter(payload, source=source).read(device)
 
         return self._store_and_publish(device, reading)
 

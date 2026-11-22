@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -154,6 +156,8 @@ class DeviceRow(Base):
     __table_args__ = (
         Index("ix_devices_role", "role"),
         Index("ix_devices_family", "device_family"),
+        # Phase 12: overview and zone lookups filter by location.
+        Index("ix_devices_location_id", "location_id"),
     )
 
 
@@ -228,6 +232,13 @@ class ReadingRow(Base):
 class AutomationRuleRow(Base):
     __tablename__ = "automation_rules"
 
+    __table_args__ = (
+        UniqueConstraint(
+            "location_id",
+            name="uq_automation_rules_location_id",
+        ),
+    )
+
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         primary_key=True,
@@ -238,8 +249,6 @@ class AutomationRuleRow(Base):
         PGUUID(as_uuid=True),
         ForeignKey("locations.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
-        index=True,
     )
 
     strategy_key: Mapped[str] = mapped_column(
@@ -265,6 +274,10 @@ class AutomationRuleRow(Base):
 
 class ActuatorExecutionLogRow(Base):
     __tablename__ = "actuator_execution_log"
+
+    __table_args__ = (
+        Index("ix_actuator_execution_log_created_at", "created_at"),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -304,6 +317,14 @@ class ActuatorExecutionLogRow(Base):
 
 class CommandLogRow(Base):
     __tablename__ = "command_log"
+
+    __table_args__ = (
+        Index("ix_command_log_created_at", "created_at"),
+        CheckConstraint(
+            "status IN ('success', 'failed', 'rejected')",
+            name="ck_command_log_status",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -351,6 +372,19 @@ class AlertRow(Base):
     """Persisted alert created by the alert persistence subscriber."""
 
     __tablename__ = "alerts"
+
+    __table_args__ = (
+        Index("ix_alerts_location_created_at", "location_id", "created_at"),
+        Index("ix_alerts_status_created_at", "status", "created_at"),
+        CheckConstraint(
+            "severity IN ('info', 'warning', 'critical')",
+            name="ck_alerts_severity",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'resolved')",
+            name="ck_alerts_status",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),

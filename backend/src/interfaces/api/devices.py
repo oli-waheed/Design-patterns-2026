@@ -1,6 +1,6 @@
 
+import logging
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -14,17 +14,20 @@ from application.devices.dto import DeviceDto
 from application.devices.mapper import DeviceMapper
 from application.devices.service import DevicesService
 from application.locations.dto import DeviceAssignmentDto
-from composition import get_event_bus
+from application.readings.service import ReadingIngest
+from composition import get_event_bus, get_sampling_config_publisher
+from application.devices.service import SamplingConfigPublisher
 from domain.events.bus import EventBus
 from domain.actuators.state import ActuatorState, IllegalTransitionError
-from infrastructure.adapters.actuators.logging_decorator import (
-    MaxRunTimeExceeded,
-)
 from infrastructure.db import get_db
 from infrastructure.persistence.device_repository import DeviceRepository
+from infrastructure.persistence.reading_repository import ReadingRepository
 from infrastructure.persistence.execution_log_repository import (
     ExecutionLogRepository,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -49,6 +52,21 @@ class SamplingResponse(BaseModel):
     tracking_enabled: bool
 
 
+class DeviceReadingRequest(BaseModel):
+    """Body an HTTP device (for example an ESP32) posts."""
+
+    value: float
+    unit: str = Field(min_length=1, max_length=32)
+
+
+class DeviceReadingResponse(BaseModel):
+    device_id: UUID
+    value: float
+    unit: str
+    source: str
+    recorded_at: datetime
+
+
 class ActuatorTransitionRequest(BaseModel):
     target: ActuatorState
 
@@ -57,17 +75,6 @@ class ActuatorStateResponse(BaseModel):
     device_id: UUID
     state: str
     allowed_commands: list[str]
-
-
-class ActuatorCommandRequest(BaseModel):
-    command: str
-    payload: dict[str, Any] = Field(default_factory=dict)
-
-
-class ActuatorCommandResponse(BaseModel):
-    device_id: UUID
-    command: str
-    success: bool
 
 
 class ExecutionLogResponse(BaseModel):
@@ -82,13 +89,24 @@ class ExecutionLogResponse(BaseModel):
 
 def get_devices_service(
     db: Session = Depends(get_db),
+    config_publisher: SamplingConfigPublisher | None = Depends(
+        get_sampling_config_publisher
+    ),
 ) -> DevicesService:
-    repository = DeviceRepository(db)
-    execution_log_repository = ExecutionLogRepository(db)
-
     return DevicesService(
-        repository=repository,
-        execution_log_repository=execution_log_repository,
+        repository=DeviceRepository(db),
+        config_publisher=config_publisher,
+    )
+
+
+def get_reading_ingest(
+    db: Session = Depends(get_db),
+    event_bus: EventBus = Depends(get_event_bus),
+) -> ReadingIngest:
+    return ReadingIngest(
+        device_repository=DeviceRepository(db),
+        reading_repository=ReadingRepository(db),
+        event_bus=event_bus,
     )
 
 
@@ -153,6 +171,103 @@ def provision_devices(
 
 
 @router.get(
+    "/{device_id}",
+    response_model=DeviceDto,
+)
+def get_device(
+    device_id: UUID,
+    service: DevicesService = Depends(get_devices_service),
+) -> DeviceDto:
+    device = service.get_device(device_id)
+
+    if device is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found.",
+        )
+
+    return DeviceMapper.to_dto(device)
+
+
+@router.get(
+    "/{device_id}/sampling",
+    response_model=SamplingResponse,
+    summary="Device HTTP: read sampling settings",
+)
+def get_device_sampling(
+    device_id: UUID,
+    service: DevicesService = Depends(get_devices_service),
+) -> SamplingResponse:
+    """An HTTP device calls this to learn its interval and tracking flag.
+
+    The device applies the interval on its own clock; the backend never
+    polls the device.
+    """
+
+    device = service.get_device(device_id)
+
+    if device is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found.",
+        )
+
+    return SamplingResponse(
+        device_id=device.id,
+        sampling_interval_seconds=device.sampling_interval_seconds,
+        tracking_enabled=device.tracking_enabled,
+    )
+
+
+@router.post(
+    "/{device_id}/readings",
+    response_model=DeviceReadingResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Device HTTP: post one reading",
+)
+def post_device_reading(
+    device_id: UUID,
+    request: DeviceReadingRequest,
+    ingest: ReadingIngest = Depends(get_reading_ingest),
+) -> DeviceReadingResponse:
+    """Translate the body with the Phase 5 translator (source "http") and
+    pass it to ReadingIngest, which stores it and publishes
+    reading.created when tracking is on. This route publishes nothing.
+    """
+
+    try:
+        reading = ingest.record_payload(
+            device_id,
+            request.model_dump(),
+            source="http",
+        )
+
+    except ValueError as exc:
+        if str(exc) == "Device not found.":
+            logger.warning(
+                "Dropping HTTP reading for unknown device %s",
+                device_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Device not found.",
+            ) from exc
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return DeviceReadingResponse(
+        device_id=reading.device_id,
+        value=reading.value,
+        unit=reading.unit,
+        source=reading.source,
+        recorded_at=reading.recorded_at,
+    )
+
+
+@router.get(
     "/{device_id}/state",
     response_model=ActuatorStateResponse,
 )
@@ -205,37 +320,6 @@ def transition_actuator(
         )
 
     return ActuatorStateResponse(**result)
-
-
-@router.post(
-    "/{device_id}/execute",
-    response_model=ActuatorCommandResponse,
-)
-def execute_actuator_command(
-    device_id: UUID,
-    request: ActuatorCommandRequest,
-    service: DevicesService = Depends(get_devices_service),
-) -> ActuatorCommandResponse:
-    try:
-        result = service.execute_actuator_command(
-            device_id=device_id,
-            command=request.command,
-            payload=request.payload,
-        )
-
-    except MaxRunTimeExceeded as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-
-    if result is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Actuator not found.",
-        )
-
-    return ActuatorCommandResponse(**result)
 
 
 @router.patch(

@@ -93,18 +93,7 @@ The `ExecutionLogRepository` saves execution records and retrieves recent record
 
 ### Execute an actuator command
 
-`POST /api/devices/{device_id}/execute`
-
-Example request:
-
-```json
-{
-  "command": "start_pump",
-  "payload": {}
-}
-```
-
-A successful execution returns a success response. If the maximum-runtime policy blocks the command, the API returns HTTP `409 Conflict` with the message `Max run time exceeded`.
+Commands run through `POST /api/commands` (Phase 10), which checks the actuator state first and then calls the decorated actuator port. The Phase 9 route `POST /api/devices/{device_id}/execute` called the decorated port without the state check, so it was removed in Phase 12 when the API was consolidated. If the maximum-runtime policy blocks a command, the command is recorded with status `failed` and the message `Max run time exceeded`.
 
 ### Get recent execution records
 

@@ -43,7 +43,7 @@ This bus has no `unsubscribe`, because all subscribers live for the whole proces
 | `ThresholdCrossed` (`threshold.crossed`) | `MoistureThresholdSubscriber` | Unit is `vwc`, the device has a zone, and the value is strictly below the zone's `moisture_threshold_low`. |
 | `CommandFailed` (`command.failed`) | `CommandService` | Command execution raised an error, for example `Max run time exceeded`. |
 | `ActuatorStateChanged` (`state.changed`) | `CommandService`, `ActuatorTransitionService` | After every successful actuator state save. |
-| `AlertCreated` (`alert.created`) | `AlertPersistenceSubscriber` | After an alert row is inserted. Nothing subscribes yet; Phase 12 will. |
+| `AlertCreated` (`alert.created`) | `AlertPersistenceSubscriber` | After an alert row is inserted. The Phase 12 WebSocket forwarder subscribes to it. |
 
 Each event carries `device_id`, `location_id` and `zone_id`. The ids are copied from the device when the event is published. They stay `null` for an unassigned device; no zone is invented.
 
@@ -89,13 +89,13 @@ Subscribers open their own database session for each event. The publisher has al
 
 The response does not include `acknowledged_at`, although the column exists.
 
-`EventFeed` (`frontend/src/components/alerts/EventFeed.tsx`) is shown in the dashboard's `#events` section. It polls `GET /api/alerts` every 5 seconds, can filter by one location and one zone, colours each alert by severity, and has an empty state.
+`EventFeed` (`frontend/src/components/alerts/EventFeed.tsx`) is shown in the dashboard's `#events` section. Since Phase 12 it refreshes when an `alert.created` frame arrives and polls `GET /api/alerts` every 5 seconds only while the WebSocket is down. It can filter by one location and one zone, colours each alert by severity, and has an empty state.
 
-## Observer vs Phase 12 WebSocket
+## Observer and the Phase 12 WebSocket
 
-Phase 11 keeps everything in-process and the browser polls. `frontend/src/services/realtime.ts` is only a stub that exports `RealtimeEvent` and `subscribeRealtime`, which returns a no-op unsubscribe function.
+Phase 11 kept everything in-process and the browser polled. `realtime.ts` was a stub.
 
-In Phase 12, a dashboard WebSocket becomes one more subscriber on the same `EventBus` (for example for `AlertCreated`). The socket only forwards events; it does not implement its own publish/subscribe, and HTTP device routes or an MQTT broker must call `ReadingIngest` instead of publishing on their own.
+In Phase 12, `WebSocketEventForwarder` (`application/realtime/ws_subscriber.py`) became one more subscriber on the same `EventBus`. It forwards `ReadingCreated`, `ActuatorStateChanged` and `AlertCreated` to `WS /api/ws` as JSON frames. It does not implement its own publish/subscribe and never writes rows. Device HTTP and the optional MQTT broker call `ReadingIngest` instead of publishing on their own, so they reuse the same publish rule.
 
 ## Comparison with other patterns
 

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
 from application.readings.sampler import SimulationSampler
-from composition import event_bus
+from composition import event_bus, mqtt_gateway
 from infrastructure.db import SessionLocal
 from infrastructure.persistence.device_repository import DeviceRepository
 from infrastructure.persistence.reading_repository import ReadingRepository
@@ -23,6 +23,7 @@ from interfaces.api.health import router as health_router
 from interfaces.api.locations import router as locations_router
 from interfaces.api.overview import router as overview_router
 from interfaces.api.sensors import router as sensors_router
+from interfaces.api.ws import router as ws_router
 
 
 async def run_simulation_sampler() -> None:
@@ -54,9 +55,16 @@ async def run_simulation_sampler() -> None:
 async def lifespan(app: FastAPI):
     sampler_task = asyncio.create_task(run_simulation_sampler())
 
+    # Optional: only runs when MQTT_BROKER_URL is set.
+    if mqtt_gateway is not None:
+        mqtt_gateway.start()
+
     try:
         yield
     finally:
+        if mqtt_gateway is not None:
+            mqtt_gateway.stop()
+
         sampler_task.cancel()
 
         try:
@@ -100,6 +108,7 @@ app.include_router(devices_router)
 app.include_router(actuator_router)
 app.include_router(overview_router)
 app.include_router(alerts_router)
+app.include_router(ws_router)
 
 
 @app.get("/")

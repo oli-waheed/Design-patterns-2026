@@ -30,6 +30,7 @@ This project is a three-tier Smart Greenhouse application consisting of:
 
 - Docker Compose
 - PostgreSQL 16
+- Mosquitto MQTT broker (optional Compose profile, Phase 12)
 
 ## Project Structure
 
@@ -162,6 +163,76 @@ Phase 1 establishes the project foundation:
 - Smart Greenhouse dashboard placeholders
 
 No design pattern is implemented in Phase 1.
+
+## API and realtime (Phase 12)
+
+The course demo needs **no hardware and no broker**. After `alembic upgrade head`, the seed data includes a simulation moisture sensor (`Demo Moisture Sensor`) that the backend samples every 5 seconds, so the dashboard moves on its own.
+
+### REST
+
+All REST endpoints live under `/api` (plus `GET /health`). Scalar at `http://localhost:8000/scalar` lists every route. The frontend reads the backend host from `VITE_API_BASE_URL` in one place (`frontend/src/services/api.ts`).
+
+### Dashboard WebSocket
+
+```text
+ws://localhost:8000/api/ws
+```
+
+Dashboard only. Devices never connect here. Every frame has the shape `{ "type": string, "payload": object }`:
+
+| `type` | `payload` |
+|---|---|
+| `reading.created` | `device_id`, `value`, `unit`, `source`, `recorded_at`, `location_id`, `zone_id` |
+| `actuator.state_changed` | `device_id`, `previous_state`, `state`, `location_id`, `zone_id` |
+| `alert.created` | `id`, `severity`, `message`, `event_type`, `status`, `created_at`, `device_id`, `location_id`, `zone_id` |
+
+`location_id` and `zone_id` are `null` for unassigned devices. Devices with `tracking_enabled = false` produce no `reading.created` frames.
+
+The socket is one more subscriber on the Phase 11 `EventBus`. It only forwards events and never writes rows.
+
+**Fallback:** the header badge shows `Live`, `Connecting…` or `Offline – retrying`. While the socket is connected, the sensor cards and the event feed update from frames and do not poll. While it is down, the sensor cards poll `GET /api/sensors/{id}/readings` and the event feed polls `GET /api/alerts`, both every 5 seconds, until the socket reconnects.
+
+### Device HTTP (for example an ESP32 with `protocol: http`)
+
+The device reads its settings, then posts readings on its own clock. The backend never polls the device and never pushes config to it.
+
+```powershell
+# Use the id of a device whose default_config has "protocol": "http".
+$id = "<device-id>"
+Invoke-RestMethod http://localhost:8000/api/devices/$id/sampling
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/devices/$id/readings -ContentType "application/json" -Body '{"value": 0.41, "unit": "vwc"}'
+```
+
+The POST is translated by the Phase 5 translator with `source` `http` and stored by `ReadingIngest`, which publishes `reading.created` when tracking is on. An unknown device returns 404.
+
+### Optional MQTT broker (`protocol: mqtt`)
+
+Mosquitto is a Compose **profile**, so a normal `docker compose up -d` does not start it, and the backend only connects when `MQTT_BROKER_URL` is set.
+
+```powershell
+docker compose --profile mqtt up -d mosquitto
+```
+
+Then set `MQTT_BROKER_URL=mqtt://localhost:1883` in `.env` and restart the backend.
+
+| Topic | Direction | Body |
+|---|---|---|
+| `greenhouse/devices/{device_id}/reading` | device → backend | `{ "value": 0.41, "unit": "vwc" }` |
+| `greenhouse/devices/{device_id}/config` | backend → device (retained) | `{ "sampling_interval_seconds": 30, "tracking_enabled": true }` |
+
+The retained config is published when `PATCH /api/devices/{device_id}/sampling` updates a device with `protocol: mqtt`. A device on the broker path should follow it. HTTP devices use `GET .../sampling` instead.
+
+Smoke test with the profile running (from `backend/`, venv active, replace `<device-id>` with an MQTT device):
+
+```powershell
+python scripts/mqtt_smoke.py <device-id> 0.37
+```
+
+A new `sensor_readings` row with `source` `mqtt` appears, and the dashboard receives a `reading.created` frame when tracking is on. Unknown devices are logged and dropped.
+
+### Schema
+
+See [docs/schema.md](docs/schema.md) for the migration chain, foreign-key `ON DELETE` rules, indexes and seed data.
 
 ## Phase Roadmap
 

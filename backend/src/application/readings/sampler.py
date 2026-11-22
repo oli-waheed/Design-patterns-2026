@@ -42,6 +42,13 @@ class SimulationSampler:
             if not device.tracking_enabled:
                 continue
 
+            # HTTP and MQTT devices push their own readings on their own
+            # clock; the sampler only drives simulation devices.
+            protocol = device.default_config.get("protocol", "simulation")
+
+            if protocol != "simulation":
+                continue
+
             last_readings = self._reading_repository.list_recent(
                 device_id=device.id,
                 limit=1,

@@ -29,6 +29,9 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 8000
       CORS_ORIGINS: http://localhost:5173
+      # Optional. Leave empty to run without a broker (the course demo).
+      # With the mqtt profile up, use mqtt://mosquitto:1883.
+      MQTT_BROKER_URL: ${MQTT_BROKER_URL:-}
     volumes:
       - ./backend/src:/app/src
       - ./backend/alembic:/app/alembic
@@ -49,6 +52,19 @@ services:
     depends_on:
       - backend
 
+  # Optional MQTT broker. Not started by a normal `docker compose up`.
+  # Start it with: docker compose --profile mqtt up -d mosquitto
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: greenhouse-mosquitto
+    profiles: ["mqtt"]
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+
 volumes:
   greenhouse_pgdata:
   frontend_node_modules:
+  mosquitto_data:

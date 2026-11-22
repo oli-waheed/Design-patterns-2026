@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from 'react'
+import { useRealtimeEvents } from '../../hooks/useRealtime'
 
 import {
   getDevices,
@@ -115,6 +116,20 @@ export default function CommandPanel({
   useEffect(() => {
     void refreshAll()
   }, [family])
+
+  // Live: refresh states and history when an actuator changes state,
+  // whether from this panel, another browser, or the API.
+  useRealtimeEvents((event) => {
+    if (event.type !== 'actuator.state_changed') {
+      return
+    }
+
+    const deviceId = (event.payload as { device_id?: string }).device_id
+
+    if (devices.some((device) => device.id === deviceId)) {
+      void refreshAll()
+    }
+  })
 
   const selectedDevice = devices.find(
     (device) => device.id === selectedDeviceId,

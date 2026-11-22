@@ -1,29 +1,40 @@
-
-from typing import Any
+from typing import Protocol
 from uuid import UUID
 
 from application.actuators.allowed_commands import allowed_commands_for
+from domain.actuators.context import ActuatorContext
 from domain.devices.entity import Device
 from domain.devices.family_factory import get_family_factory
-from domain.actuators.context import ActuatorContext
-
-from infrastructure.adapters.actuators.factory import (
-    build_actuator_port,
-)
 from infrastructure.persistence.device_repository import DeviceRepository
-from infrastructure.persistence.execution_log_repository import (
-    ExecutionLogRepository,
-)
+
+
+class SamplingConfigPublisher(Protocol):
+    """Pushes sampling settings to devices that cannot ask for them.
+
+    Phase 12: only MQTT devices use this, through a retained message.
+    HTTP devices read the same values with GET .../sampling instead.
+    """
+
+    def publish_sampling_config(
+        self,
+        device_id: UUID,
+        sampling_interval_seconds: int,
+        tracking_enabled: bool,
+    ) -> None:
+        ...
 
 
 class DevicesService:
     def __init__(
         self,
         repository: DeviceRepository,
-        execution_log_repository: ExecutionLogRepository | None = None,
+        config_publisher: SamplingConfigPublisher | None = None,
     ):
         self._repository = repository
-        self._execution_log_repository = execution_log_repository
+        self._config_publisher = config_publisher
+
+    def get_device(self, device_id: UUID) -> Device | None:
+        return self._repository.get_device_by_id(device_id)
 
     def provision_family(
         self,
@@ -59,11 +70,27 @@ class DevicesService:
         sampling_interval_seconds: int,
         tracking_enabled: bool,
     ) -> Device | None:
-        return self._repository.update_sampling(
+        device = self._repository.update_sampling(
             device_id=device_id,
             sampling_interval_seconds=sampling_interval_seconds,
             tracking_enabled=tracking_enabled,
         )
+
+        # HTTP devices read these columns with GET .../sampling, so nothing
+        # is pushed. MQTT devices get a retained config message, but only
+        # when a broker is configured.
+        if (
+            device is not None
+            and device.default_config.get("protocol") == "mqtt"
+            and self._config_publisher is not None
+        ):
+            self._config_publisher.publish_sampling_config(
+                device_id=device.id,
+                sampling_interval_seconds=device.sampling_interval_seconds,
+                tracking_enabled=device.tracking_enabled,
+            )
+
+        return device
 
     def list_devices_in_zone(
         self,
@@ -92,37 +119,4 @@ class DevicesService:
             "device_id": device_id,
             "state": context.state.value,
             "allowed_commands": allowed_commands_for(device, context),
-        }
-
-    def execute_actuator_command(
-        self,
-        device_id: UUID,
-        command: str,
-        payload: dict[str, Any] | None = None,
-    ) -> dict | None:
-        device = self._repository.get_device_by_id(device_id)
-
-        if device is None or device.role != "actuator":
-            return None
-
-        if self._execution_log_repository is None:
-            raise RuntimeError(
-                "Execution logging repository is not configured."
-            )
-
-        actuator = build_actuator_port(
-            device_repository=self._repository,
-            execution_log_repository=self._execution_log_repository,
-        )
-
-        actuator.apply(
-            device_id=device_id,
-            command=command,
-            payload=payload or {},
-        )
-
-        return {
-            "device_id": device_id,
-            "command": command,
-            "success": True,
         }

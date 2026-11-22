@@ -4,10 +4,31 @@ import type { FormEvent } from 'react'
 import {
   createSensor,
   getDevices,
+  getSensorReadings,
+  readSensorNow,
   updateDeviceSampling,
 } from '../../services/api'
 
-import type { DeviceDto } from '../../services/api'
+import type { DeviceDto, ReadingDto } from '../../services/api'
+import { useRealtimeEvents, useRealtimeStatus } from '../../hooks/useRealtime'
+import type { ReadingCreatedPayload } from '../../services/realtime'
+
+// Phase 5 readings poll. Phase 12: only used while the WebSocket is down.
+const READINGS_POLL_MS = 5000
+
+function formatTime(value: string): string {
+  const date = new Date(value)
+
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleTimeString()
+}
+
+function formatValue(reading: ReadingDto): string {
+  const digits = reading.unit === 'vwc' ? 3 : 1
+
+  return `${reading.value.toFixed(digits)} ${reading.unit}`
+}
 
 type SamplingState = {
   sampling_interval_seconds: number
@@ -31,6 +52,111 @@ export default function SensorList() {
 
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+
+  const [latest, setLatest] = useState<Record<string, ReadingDto>>({})
+  const [reading, setReading] = useState<string | null>(null)
+
+  const realtimeStatus = useRealtimeStatus()
+  const live = realtimeStatus === 'connected'
+
+  function applyReading(next: ReadingDto) {
+    setLatest((current) => {
+      const previous = current[next.device_id]
+
+      // Ignore frames older than what the card already shows.
+      if (
+        previous &&
+        new Date(previous.recorded_at) > new Date(next.recorded_at)
+      ) {
+        return current
+      }
+
+      return { ...current, [next.device_id]: next }
+    })
+  }
+
+  // Live updates: apply reading.created frames in place.
+  useRealtimeEvents((event) => {
+    if (event.type !== 'reading.created') {
+      return
+    }
+
+    const payload = event.payload as ReadingCreatedPayload
+
+    applyReading({
+      device_id: payload.device_id,
+      value: payload.value,
+      unit: payload.unit,
+      source: payload.source,
+      recorded_at: payload.recorded_at,
+    })
+  })
+
+  const sensorIds = sensors.map((sensor) => sensor.id).join(',')
+
+  // Load the latest stored reading for every card. While the socket is
+  // connected this runs once; while it is down it repeats every 5 s
+  // (the Phase 5 poll as fallback).
+  useEffect(() => {
+    const ids = sensorIds ? sensorIds.split(',') : []
+
+    if (ids.length === 0) {
+      return
+    }
+
+    let cancelled = false
+
+    async function loadLatest() {
+      const results = await Promise.all(
+        ids.map((id) =>
+          getSensorReadings(id, 1)
+            .then((rows) => rows[0] ?? null)
+            .catch(() => null),
+        ),
+      )
+
+      if (cancelled) {
+        return
+      }
+
+      results.forEach((row) => {
+        if (row) {
+          applyReading(row)
+        }
+      })
+    }
+
+    void loadLatest()
+
+    if (live) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const intervalId = window.setInterval(loadLatest, READINGS_POLL_MS)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [sensorIds, live])
+
+  async function handleReadNow(sensorId: string) {
+    try {
+      setReading(sensorId)
+      setError(null)
+
+      const result = await readSensorNow(sensorId)
+      applyReading(result)
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to read sensor',
+      )
+    } finally {
+      setReading(null)
+    }
+  }
 
   async function loadSensors() {
     try {
@@ -272,6 +398,44 @@ export default function SensorList() {
                       Type: {sensor.device_type}
                     </p>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleReadNow(sensor.id)}
+                    disabled={reading === sensor.id}
+                    className="shrink-0 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {reading === sensor.id ? 'Reading...' : 'Read now'}
+                  </button>
+                </div>
+
+                <div
+                  className="mt-4 flex items-baseline justify-between gap-4 rounded-lg border bg-gray-50 px-4 py-3"
+                  data-testid={`latest-reading-${sensor.id}`}
+                >
+                  {latest[sensor.id] ? (
+                    <>
+                      <p className="text-2xl font-semibold tabular-nums">
+                        {formatValue(latest[sensor.id])}
+                      </p>
+
+                      <p className="text-right text-xs text-gray-500">
+                        {formatTime(latest[sensor.id].recorded_at)}
+                        {' · '}
+                        {latest[sensor.id].source}
+                        <br />
+                        {live
+                          ? 'Live'
+                          : sensor.tracking_enabled
+                            ? 'Polling every 5 s'
+                            : 'Tracking off'}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      No readings yet.
+                    </p>
+                  )}
                 </div>
 
                 {settings && (

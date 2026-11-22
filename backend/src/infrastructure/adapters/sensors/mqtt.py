@@ -6,14 +6,16 @@ from domain.sensors.reading import Reading
 
 
 class MqttSensorAdapter(SensorPort):
-    """Translate an MQTT-style payload into a normalized Reading.
+    """Translate a pushed payload dict into a normalized Reading.
 
-    Phase 5 only translates the payload.
-    It does not connect to an MQTT broker.
+    This is the Phase 5 translator. It never opens a connection itself.
+    Phase 12 reuses it for both push paths: the optional MQTT broker
+    subscriber (source "mqtt") and device HTTP POST (source "http").
     """
 
-    def __init__(self, payload: dict):
+    def __init__(self, payload: dict, source: str = "mqtt"):
         self._payload = payload
+        self._source = source
 
     def read(self, device: Device) -> Reading:
         if device.id is None:
@@ -41,6 +43,6 @@ class MqttSensorAdapter(SensorPort):
             device_id=device.id,
             value=float(value),
             unit=str(unit),
-            source="mqtt",
+            source=self._source,
             recorded_at=recorded_at,
         )

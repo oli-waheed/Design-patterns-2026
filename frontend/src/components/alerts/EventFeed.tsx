@@ -9,7 +9,10 @@ import {
   type LocationSummaryDto,
   type ZoneDto,
 } from '../../services/api'
+import { useRealtimeEvents, useRealtimeStatus } from '../../hooks/useRealtime'
+import type { AlertCreatedPayload } from '../../services/realtime'
 
+// Phase 11 poll. Phase 12: only used while the WebSocket is down.
 const POLL_INTERVAL_MS = 5000
 
 const severityStyles: Record<AlertSeverity, string> = {
@@ -45,6 +48,31 @@ export default function EventFeed() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+
+  // Bumped when an alert.created frame matches the current filter, which
+  // re-runs the load effect below.
+  const [pushVersion, setPushVersion] = useState(0)
+
+  const realtimeStatus = useRealtimeStatus()
+  const live = realtimeStatus === 'connected'
+
+  useRealtimeEvents((event) => {
+    if (event.type !== 'alert.created') {
+      return
+    }
+
+    const alert = event.payload as AlertCreatedPayload
+
+    if (locationId && alert.location_id !== locationId) {
+      return
+    }
+
+    if (zoneId && alert.zone_id !== zoneId) {
+      return
+    }
+
+    setPushVersion((current) => current + 1)
+  })
 
   // Load the location list once for the filter.
   useEffect(() => {
@@ -123,13 +151,20 @@ export default function EventFeed() {
 
     loadAlerts()
 
+    // Prefer the WebSocket. Poll every 5 s only while it is not connected.
+    if (live) {
+      return () => {
+        cancelled = true
+      }
+    }
+
     const intervalId = window.setInterval(loadAlerts, POLL_INTERVAL_MS)
 
     return () => {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [locationId, zoneId])
+  }, [locationId, zoneId, live, pushVersion])
 
   function handleLocationChange(value: string) {
     setLocationId(value)
@@ -148,7 +183,10 @@ export default function EventFeed() {
           <h4 className="font-semibold">Alerts</h4>
 
           <p className="mt-1 text-sm text-gray-500">
-            Active alerts, newest first. Updates every 5 seconds.
+            Active alerts, newest first.{' '}
+            {live
+              ? 'Live updates over WebSocket.'
+              : 'Updating every 5 seconds until the live connection is back.'}
             {lastUpdated && (
               <> Last updated {lastUpdated.toLocaleTimeString()}.</>
             )}

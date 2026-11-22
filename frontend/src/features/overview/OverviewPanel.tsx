@@ -1,11 +1,12 @@
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getLocations,
   getLocationOverview,
   type LocationSummaryDto,
   type OverviewResponseDto,
 } from '../../services/api'
+import { useRealtimeEvents } from '../../hooks/useRealtime'
 
 export default function OverviewPanel() {
   const [locations, setLocations] = useState<LocationSummaryDto[]>([])
@@ -81,6 +82,56 @@ export default function OverviewPanel() {
       setOverview(null)
     }
   }, [locationId, loadOverview])
+
+  // Live zone updates: when a reading.created or alert.created frame names
+  // one of this overview's zones, quietly re-fetch the overview (at most
+  // once per second) so its devices and latest readings stay current.
+  const refreshTimer = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) {
+        window.clearTimeout(refreshTimer.current)
+      }
+    },
+    [],
+  )
+
+  useRealtimeEvents((event) => {
+    if (
+      event.type !== 'reading.created' &&
+      event.type !== 'alert.created'
+    ) {
+      return
+    }
+
+    const zoneId = (event.payload as { zone_id?: string | null }).zone_id
+
+    if (
+      !zoneId ||
+      !overview ||
+      !overview.zones.some((zone) => zone.id === zoneId) ||
+      refreshTimer.current !== null
+    ) {
+      return
+    }
+
+    const currentLocationId = overview.location.id
+
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null
+
+      getLocationOverview(currentLocationId)
+        .then((data) => {
+          setOverview((current) =>
+            current?.location.id === data.location.id ? data : current,
+          )
+        })
+        .catch(() => {
+          // Keep the last overview; the Refresh button still works.
+        })
+    }, 1000)
+  })
 
   function handleRefresh() {
     void loadOverview(locationId)
