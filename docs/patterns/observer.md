@@ -1,5 +1,11 @@
 # Observer Pattern — Smart Greenhouse
 
+## At a glance
+
+**Problem.** Several things must react when something happens (a low reading, a failed command, an actuator error): store an alert, update the dashboard, maybe count metrics. If publishers called each reaction directly they would depend on all of them.
+
+**Intent.** **Observer** lets a subject publish events to any number of subscribers it does not know, so new reactions are added without changing the publishers.
+
 ## Overview
 
 The Observer pattern lets one object announce that something happened, while any number of other objects react to it. The object that announces the change does not know who is listening.
@@ -119,3 +125,19 @@ The Phase 11 tests verify that:
 - `POST /api/devices/{id}/transition` with `target=error` inserts `state.changed`, severity `critical`, message `Actuator entered error`; other transitions insert nothing.
 - `status` other than `active`, `resolved` or `all` returns 400, and `since` filters by `created_at`.
 - `ReadingIngest`, `CommandService` and `ActuatorTransitionService` do not import `AlertRepository`.
+
+## Where to look in code
+
+| What | Path |
+|---|---|
+| Subject | `backend/src/domain/events/bus.py` (`EventBus`) |
+| Events | `backend/src/domain/events/events.py` |
+| Alert subscribers | `backend/src/application/alerts/subscribers.py` |
+| WebSocket subscriber (Phase 12) | `backend/src/application/realtime/ws_subscriber.py` |
+| Composition root | `backend/src/composition.py` |
+| Publishers | `backend/src/application/readings/service.py`, `commands/service.py`, `actuators/transition_service.py` |
+| Tests | `backend/tests/test_event_bus.py`, `test_alert_subscribers.py`, `test_reading_events.py`, `test_realtime_ws.py` |
+
+## Try this extension
+
+Add a **`MetricsSubscriber`** that counts events by type in memory and expose the counts at `GET /api/metrics`. Subscribe it in `composition.py` only, and write a test showing that no publisher changed. Then make it throw on purpose and confirm the alert subscriber still runs.

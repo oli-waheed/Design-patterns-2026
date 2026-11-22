@@ -33,8 +33,8 @@ This project follows the Design Patterns course phases in numerical order.
 | 1 — Skeleton | Complete | — |
 | 2 — Factory Method | Complete | [factory-method.md](../patterns/factory-method.md) |
 | 3 — Abstract Factory | Complete | [abstract-factory.md](../patterns/abstract-factory.md) |
-| 4 — Builder | Complete | [builder.md](../builder.md) |
-| 5 — Adapter | Complete | — |
+| 4 — Builder | Complete | [builder.md](../patterns/builder.md) |
+| 5 — Adapter | Complete | [adapter.md](../patterns/adapter.md) |
 | 6 — Strategy | Complete | [strategy.md](../patterns/strategy.md) |
 | 7 — Facade | Complete | [facade.md](../patterns/facade.md) |
 | 8 — State | Complete | [state.md](../patterns/state.md) |
@@ -43,6 +43,7 @@ This project follows the Design Patterns course phases in numerical order.
 | 11 — Observer | Complete | [observer.md](../patterns/observer.md) |
 | 12 — Production API, WebSocket, schema hardening | Complete | [README](../../README.md#api-and-realtime-phase-12), [schema.md](../schema.md) |
 | 13 — Dashboard polish (optional) | Complete | [README](../../README.md#dashboard-polish-phase-13-optional) |
+| 14 — Tests, docs, demo (optional) | Complete | [testing.md](../testing.md), [demo.md](../demo.md) |
 
 Phases 1–12 complete the required course track. Phases 13–14 are optional.
 

@@ -1,5 +1,10 @@
-
 # Command Pattern - Smart Greenhouse
+
+## At a glance
+
+**Problem.** Operators send actions such as start pump, stop pump and set light level. Calling the actuator directly from the router would skip state checks, policies and history, and every new action would add another branch to the API.
+
+**Intent.** **Command** turns each request into an object with `execute()`, so it can be validated, run through one invoker and recorded in `command_log`.
 
 ## Overview
 
@@ -210,3 +215,17 @@ $env:PYTHONPATH = "src"
 python -m pytest -q
 ```
 
+## Where to look in code
+
+| What | Path |
+|---|---|
+| Command interface | `backend/src/domain/commands/base.py` |
+| Concrete commands | `backend/src/domain/commands/pump.py`, `backend/src/domain/commands/light.py` |
+| Registry and invoker | `backend/src/domain/commands/invoker.py` |
+| Client (state checks, logging, events) | `backend/src/application/commands/service.py` |
+| API | `backend/src/interfaces/api/commands.py` (`POST`/`GET /api/commands`) |
+| Tests | `backend/tests/test_commands.py`, `backend/tests/integration/test_commands_api.py` |
+
+## Try this extension
+
+Add a **`ResetErrorCommand`** (`reset_error`), which `ALLOWED_COMMANDS` already lists for the `error` state. Register it, map it to the `error → idle` transition in `CommandService`, and test that it is rejected in every other state. As a second step, add `undo()` to the pump commands by capturing the previous state before `execute()`.

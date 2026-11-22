@@ -98,6 +98,24 @@ def test_get_location_returns_saved_configuration():
 
 
 def test_list_locations_returns_created_locations():
+    # Each test starts from a clean database, so create what we list.
+    for name in ("API Test Location", "Read Test Location"):
+        response = client.post(
+            "/api/locations",
+            json={
+                "location_name": name,
+                "zones": [
+                    {
+                        "name": "Zone A",
+                        "moisture_threshold_low": 0.3,
+                        "moisture_threshold_high": 0.7,
+                        "schedule": {},
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 201
+
     response = client.get("/api/locations")
 
     assert response.status_code == 200
@@ -105,12 +123,12 @@ def test_list_locations_returns_created_locations():
     data = response.json()
 
     assert isinstance(data, list)
-    assert len(data) >= 1
 
     names = [location["name"] for location in data]
 
     assert "API Test Location" in names
     assert "Read Test Location" in names
+    assert "Demo Greenhouse" in names
 
 
 def test_delete_location_returns_204():

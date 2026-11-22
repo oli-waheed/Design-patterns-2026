@@ -1,5 +1,11 @@
 # Decorator Pattern — Smart Greenhouse
 
+## At a glance
+
+**Problem.** Actuator commands need cross-cutting policies such as execution logging and a 30-minute run-time limit. Putting them inside the simulation adapter would mix concerns, and subclassing every combination of policies would multiply classes.
+
+**Intent.** **Decorator** wraps an object in another object with the same interface to add behaviour, and wrappers can be stacked in a chosen order.
+
 ## Overview
 
 The Decorator pattern adds behaviour to an existing object by wrapping it with another object that implements the same interface.
@@ -143,3 +149,17 @@ Run the backend tests from the `backend` directory:
 $env:PYTHONPATH = "src"
 python -m pytest -q
 ```
+
+## Where to look in code
+
+| What | Path |
+|---|---|
+| Component interface | `backend/src/domain/actuators/ports.py` (`ActuatorPort`) |
+| Concrete component | `backend/src/infrastructure/adapters/actuators/simulation.py` |
+| Decorators | `backend/src/infrastructure/adapters/actuators/logging_decorator.py`, `max_runtime_decorator.py` |
+| Chain assembly | `backend/src/infrastructure/adapters/actuators/factory.py` (`build_actuator_port`) |
+| Tests | `backend/tests/test_actuator_decorators.py`, `backend/tests/integration/test_commands_api.py` |
+
+## Try this extension
+
+Add a **`RetryActuatorDecorator`** that retries a failing inner `apply()` up to three times for transient errors but never retries `MaxRunTimeExceeded`. Decide where it goes in the chain (inside or outside logging?) and write a test that shows how many execution-log rows one retried command creates in each position.

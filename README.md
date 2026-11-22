@@ -260,6 +260,18 @@ Phase 13 polishes the existing dashboard; it is not a rewrite and adds no busine
 
 Out of scope, as the requirements say: authentication / roles and a visual rule editor.
 
+## Tests, demo and documentation (Phase 14, optional)
+
+| What | Where |
+|---|---|
+| Run all backend tests (separate `greenhouse_test` database, reset after every test) | `cd backend` then `pytest -q` — see [docs/testing.md](docs/testing.md) |
+| Migration smoke test: empty database → `alembic upgrade head` | `python scripts/migration_smoke.py` (from `backend/`) |
+| Demo story touching every pattern, with dashboard areas and code paths | [docs/demo.md](docs/demo.md) |
+| Demo as a script that prints each HTTP step (backend running) | `python scripts/demo_scenario.py` (from `backend/`) |
+| Pattern notes (problem, intent, code, extension exercise) | [Factory Method](docs/patterns/factory-method.md) · [Abstract Factory](docs/patterns/abstract-factory.md) · [Builder](docs/patterns/builder.md) · [Adapter](docs/patterns/adapter.md) · [Strategy](docs/patterns/strategy.md) · [Facade](docs/patterns/facade.md) · [State](docs/patterns/state.md) · [Decorator](docs/patterns/decorator.md) · [Command](docs/patterns/command.md) · [Observer](docs/patterns/observer.md) |
+| Database schema, migrations, indexes, seed | [docs/schema.md](docs/schema.md) |
+| Continuous integration (tests, migration smoke, lint, build) | `.github/workflows/ci.yml` |
+
 ## Phase Roadmap
 
 See [docs/phases/README.md](docs/phases/README.md) for the complete phase order.

@@ -1,5 +1,11 @@
 # Builder Pattern
 
+## At a glance
+
+**Problem.** A location is only valid as a whole: it needs a name, at least one zone, unique zone names and moisture thresholds where low < high, all between 0 and 1. Building it from loose parameters would scatter these checks across the API and services.
+
+**Intent.** **Builder** constructs a complex object step by step and validates the result in one `build()` call, so a half-valid configuration never reaches the database.
+
 ## Purpose
 
 The Builder pattern is used to create a valid location configuration step by step.
@@ -106,3 +112,17 @@ Builder is the construction pattern. A Builder can use a fluent interface, but t
 After `build()` creates the `LocationConfig`, the domain objects are immutable.
 
 This makes the completed configuration safer to use because it cannot accidentally be changed after validation.
+
+## Where to look in code
+
+| What | Path |
+|---|---|
+| Builder | `backend/src/domain/locations/config_builder.py` |
+| Products and error | `backend/src/domain/locations/entity.py`, `backend/src/domain/locations/errors.py` |
+| Director / client | `backend/src/application/locations/config_service.py` |
+| API | `backend/src/interfaces/api/locations.py` (`POST /api/locations`) |
+| Tests | `backend/tests/test_location_builder.py`, `backend/tests/integration/test_locations_api.py` |
+
+## Try this extension
+
+Validate **zone schedules** in the builder: accept `schedule={"start_hour": 6, "end_hour": 20}` and reject hours outside 0–23 or `start_hour >= end_hour` with a `ConfigurationError`. Add one passing and two failing tests in `test_location_builder.py`.

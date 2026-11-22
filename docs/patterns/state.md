@@ -1,4 +1,10 @@
-﻿# State Pattern â€” Smart Greenhouse
+# State Pattern — Smart Greenhouse
+
+## At a glance
+
+**Problem.** An actuator's allowed actions depend on its lifecycle: a pump can only start when idle and only stop when running. Modelling this with booleans and scattered `if` checks allows impossible combinations such as running *and* in maintenance.
+
+**Intent.** **State** makes the current state explicit and lets it decide which transitions and commands are legal. This project uses a transition table plus an `ActuatorContext` rather than one class per state.
 
 ## Overview
 
@@ -181,3 +187,18 @@ The State pattern changes the available behaviour according to an object's curre
 The Strategy pattern selects an algorithm or decision policy. In this project, automation strategies evaluate sensor readings and recommend whether irrigation is needed.
 
 The State pattern manages actuator lifecycle, while the Strategy pattern manages automation decisions.
+
+## Where to look in code
+
+| What | Path |
+|---|---|
+| States and transition / command tables | `backend/src/domain/actuators/state.py` |
+| Context | `backend/src/domain/actuators/context.py` |
+| Manual transitions (publishes `ActuatorStateChanged`) | `backend/src/application/actuators/transition_service.py` |
+| Allowed commands for the UI | `backend/src/application/actuators/allowed_commands.py` |
+| API | `backend/src/interfaces/api/devices.py` (`GET .../state`, `POST .../transition`) |
+| Tests | `backend/tests/test_actuator_state.py`, `backend/tests/test_actuator_state_api.py` |
+
+## Try this extension
+
+Turn the table into **state classes**: an `ActuatorStateBase` with `allowed_targets()` and `allowed_commands()`, and one subclass per state (`IdleState`, `RunningState`, ...). Keep `ActuatorContext`'s public methods the same, so `test_actuator_state.py` passes unchanged. Then compare which version is easier to extend with a new `paused` state.

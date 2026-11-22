@@ -1,5 +1,11 @@
 # Abstract Factory Pattern
 
+## At a glance
+
+**Problem.** A greenhouse runs either simulated devices or real edge hardware. Each environment needs a matching *set* of devices (two sensors, a pump, a grow light) with consistent protocols, and mixing a simulation pump with GPIO sensors must not be possible.
+
+**Intent.** **Abstract Factory** creates a whole family of related objects through one interface, so the caller picks a family once and always gets a consistent kit.
+
 ## Problem
 
 The Smart Greenhouse needs to support different device families, such as `simulation` and `edge`.
@@ -113,3 +119,17 @@ Its `create_device_set()` method would create the sensors and actuators with clo
 The new factory would then be added to the family factory lookup.
 
 The existing repository, service, DTO, mapper, and general device API could continue to work with the new family.
+
+## Where to look in code
+
+| What | Path |
+|---|---|
+| Abstract and concrete factories, registry | `backend/src/domain/devices/family_factory.py` |
+| Product | `backend/src/domain/devices/entity.py` |
+| Client (provisioning) | `backend/src/application/devices/service.py` (`provision_family`) |
+| API | `backend/src/interfaces/api/devices.py` (`POST /api/devices/provision?family=`) |
+| Tests | `backend/tests/test_abstract_factory.py` |
+
+## Try this extension
+
+Add an **`mqtt` family** (`MqttDeviceFactory`) whose sensors use `"protocol": "mqtt"`, so the Phase 12 broker path and retained config apply to them. Register it in `FACTORIES`, add a test that its kit differs from `edge`, and provision it from the dashboard's Devices section. (The *Adding a Third Family* section above shows the steps.)

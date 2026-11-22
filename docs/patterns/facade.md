@@ -1,5 +1,10 @@
-
 # Facade Pattern — Smart Greenhouse
+
+## At a glance
+
+**Problem.** The dashboard overview needs the location, its zones, assigned devices, their latest readings, the saved strategy and the current recommendation. Without a single entry point every client would repeat the same multi-repository dance.
+
+**Intent.** **Facade** gives one simple method (`get_overview`) over several subsystems, so callers depend on one object instead of many.
 
 ## 1. Purpose
 
@@ -80,3 +85,17 @@ The Facade provides several benefits:
 ## 8. Possible extension
 
 A future extension could introduce a dedicated overview repository for the location, zone, device, and reading queries. This would keep SQL query logic in the persistence layer while allowing the Facade to focus on orchestration and response assembly.
+
+## Where to look in code
+
+| What | Path |
+|---|---|
+| Facade | `backend/src/application/overview/facade.py` |
+| Response DTOs | `backend/src/application/overview/dto.py` |
+| Batched queries | `backend/src/infrastructure/persistence/overview_repository.py` |
+| API | `backend/src/interfaces/api/overview.py` (`GET /api/locations/{id}/overview`) |
+| Tests | `backend/tests/test_overview_facade.py` (fakes), backend/tests/test_overview_api.py |
+
+## Try this extension
+
+Add the **latest active alert per zone** to the overview. Compose `AlertRepository` inside the facade (one batched query, not one per zone), add `last_alert` to `OverviewZoneDto`, and extend `test_overview_facade.py` with a fake alert. The HTTP handler should not change.

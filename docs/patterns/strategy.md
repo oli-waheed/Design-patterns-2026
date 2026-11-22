@@ -1,5 +1,11 @@
 # Strategy Pattern — Smart Greenhouse
 
+## At a glance
+
+**Problem.** Operators want different irrigation behaviour per location (cautious or proactive) without changing code, and the decision must be testable without a database or a running pump.
+
+**Intent.** **Strategy** puts each decision algorithm in its own class behind one interface, so the active algorithm can be swapped at runtime by a saved key.
+
 ## Overview
 
 The Strategy pattern defines a family of algorithms, keeps each algorithm in a separate class, and makes them interchangeable.
@@ -138,3 +144,17 @@ python -m pytest -q
 The current strategies provide recommendations only. A separate control workflow must handle execution, with the necessary safety checks before activating equipment. The Command pattern in Phase 10 is intended to represent actions such as controlling a device.
 
 Future improvements could include additional strategies, configurable parameters, or other environmental readings. Each new policy should remain separate from the application and hardware-control logic.
+
+## Where to look in code
+
+| What | Path |
+|---|---|
+| Strategy interface, concrete strategies, registry | `backend/src/domain/automation/strategy.py` |
+| Context passed to strategies | `backend/src/domain/automation/context.py` |
+| Client | `backend/src/application/automation/automation_service.py` |
+| API | `backend/src/interfaces/api/automation.py` (`GET`/`PUT .../automation/strategy`, `POST .../evaluate`) |
+| Tests | `backend/tests/test_automation_strategy.py`, `backend/tests/integration/test_automation_api.py` |
+
+## Try this extension
+
+Add a **hysteresis strategy** (`"balanced"`): irrigate below the zone low threshold, and keep recommending irrigation until moisture reaches the midpoint between low and high. It needs the previous recommendation, so decide whether that belongs in the context or in the strategy, and test both sides of the midpoint.
